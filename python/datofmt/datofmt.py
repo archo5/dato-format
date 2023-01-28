@@ -96,7 +96,7 @@ class EncodingU16:
 		if value_alignment is not None:
 			if value_alignment < 2:
 				value_alignment = 2
-			pos = roundup(pos, value_alignment)
+			pos = roundup(pos + 2, value_alignment) - 2
 			while len(W.data) < pos:
 				W.data.append(0)
 		W.data.extend(intval.to_bytes(2, "little"))
@@ -115,7 +115,7 @@ class EncodingU32:
 		if value_alignment is not None:
 			if value_alignment < 4:
 				value_alignment = 4
-			pos = roundup(pos, value_alignment)
+			pos = roundup(pos + 4, value_alignment) - 4
 			while len(W.data) < pos:
 				W.data.append(0)
 		W.data.extend(intval.to_bytes(4, "little"))
@@ -335,11 +335,21 @@ class Builder:
 		self.data.extend(PACK_F64.pack(val))
 		return Value(TYPE_F64, pos)
 
-	def append_string(self, val):
+	def append_string_utf8(self, val):
 		val = str(val).encode("utf-8")
 		pos = self._append_value_length(self, len(val), 1 if self.aligned else None)
 		self.data.extend(val)
 		return Value(TYPE_String8, pos)
+	def append_string_utf16(self, val):
+		val = str(val).encode("utf-16-le")
+		pos = self._append_value_length(self, len(val) // 2, 2 if self.aligned else None)
+		self.data.extend(val)
+		return Value(TYPE_String16, pos)
+	def append_string_utf32(self, val):
+		val = str(val).encode("utf-32-le")
+		pos = self._append_value_length(self, len(val) // 4, 4 if self.aligned else None)
+		self.data.extend(val)
+		return Value(TYPE_String32, pos)
 
 	def append_bytes(self, val):
 		pos = self._append_value_length(self, len(val), 1 if self.aligned else None)
@@ -501,6 +511,18 @@ class LinearWriter:
 		self.data.extend(val)
 		self.data.append(0)
 		self._write_elem(key, TYPE_String8, pos)
+	def write_string_utf16(self, key, val):
+		val = str(val).encode("utf-16-le")
+		pos = self._append_value_length(self, len(val) // 2, 2 if self.aligned else None)
+		self.data.extend(val)
+		self.data.extend(b"\0\0")
+		self._write_elem(key, TYPE_String16, pos)
+	def write_string_utf32(self, key, val):
+		val = str(val).encode("utf-32-le")
+		pos = self._append_value_length(self, len(val) // 4, 4 if self.aligned else None)
+		self.data.extend(val)
+		self.data.extend(b"\0\0\0\0")
+		self._write_elem(key, TYPE_String32, pos)
 	def write_bytes(self, key, val):
 		pos = self._append_value_length(self, len(val), 1 if self.aligned else None)
 		self.data.extend(val)
@@ -598,7 +620,18 @@ class LinearWriter:
 	def write_variable(self, key, val):
 		if val is None: self.write_null(key); return
 		if isinstance(val, bool): self.write_bool(key, val); return
-		if isinstance(val, int): self.write_int64(key, val); return
+		if isinstance(val, int):
+			if val < 0:
+				if val >= -0x80000000:
+					self.write_int32(key, val)
+				else:
+					self.write_int64(key, val)
+			else:
+				if val <= 0x7fffffff:
+					self.write_uint32(key, val)
+				else:
+					self.write_uint64(key, val)
+			return
 		if isinstance(val, float): self.write_float64(key, val); return
 		if isinstance(val, str): self.write_string(key, val); return
 		if isinstance(val, (bytes, bytearray)): self.write_bytes(key, val); return
@@ -679,10 +712,10 @@ class ObjectAccessor(Accessor):
 
 
 class ValueArrayAccessor(Accessor):
-	def __init__(self, R, _type, pos, esize, dectype):
+	def __init__(self, R, pos, _type, esize, dectype):
 		self.R = R
-		self._type = _type
 		self.pos = pos
+		self._type = _type
 		self.size, self.datapos = R._get_value_array_size_and_data_pos(pos)
 		self.esize = esize
 		self.dectype = dectype
@@ -757,21 +790,21 @@ ACCESSORS[TYPE_F64] = lambda R, pos: SingleValueAccessor(TYPE_F64, lambda: R._re
 ACCESSORS[TYPE_Array] = ArrayAccessor
 ACCESSORS[TYPE_Object] = ObjectAccessor
 
-ACCESSORS[TYPE_String8] = lambda R, pos: StringAccessor(R, TYPE_String8, pos, 1, (PACK_U8, "utf-8"))
-ACCESSORS[TYPE_String16] = lambda R, pos: StringAccessor(R, TYPE_String16, pos, 2, (PACK_U16, "utf-16"))
-ACCESSORS[TYPE_String32] = lambda R, pos: StringAccessor(R, TYPE_String32, pos, 4, (PACK_U32, "utf-32"))
-ACCESSORS[TYPE_ByteArray] = lambda R, pos: ByteArrayAccessor(R, TYPE_ByteArray, pos, 1, None)
+ACCESSORS[TYPE_String8] = lambda R, pos: StringAccessor(R, pos, TYPE_String8, 1, (PACK_U8, "utf-8"))
+ACCESSORS[TYPE_String16] = lambda R, pos: StringAccessor(R, pos, TYPE_String16, 2, (PACK_U16, "utf-16"))
+ACCESSORS[TYPE_String32] = lambda R, pos: StringAccessor(R, pos, TYPE_String32, 4, (PACK_U32, "utf-32"))
+ACCESSORS[TYPE_ByteArray] = lambda R, pos: ByteArrayAccessor(R, pos, TYPE_ByteArray, 1, None)
 
-ACCESSORS[TYPE_TypedArrayS8] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayS8, 1, PACK_S8)
-ACCESSORS[TYPE_TypedArrayU8] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayU8, 1, PACK_U8)
-ACCESSORS[TYPE_TypedArrayS16] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayS16, 2, PACK_S16)
-ACCESSORS[TYPE_TypedArrayU16] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayU16, 2, PACK_U16)
-ACCESSORS[TYPE_TypedArrayS32] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayS32, 4, PACK_S32)
-ACCESSORS[TYPE_TypedArrayU32] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayU32, 4, PACK_U32)
-ACCESSORS[TYPE_TypedArrayS64] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayS64, 8, PACK_S64)
-ACCESSORS[TYPE_TypedArrayU64] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayU64, 8, PACK_U64)
-ACCESSORS[TYPE_TypedArrayF32] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayF32, 4, PACK_F32)
-ACCESSORS[TYPE_TypedArrayF64] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayF64, 8, PACK_F64)
+ACCESSORS[TYPE_TypedArrayS8] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayS8, 1, PACK_S8)
+ACCESSORS[TYPE_TypedArrayU8] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayU8, 1, PACK_U8)
+ACCESSORS[TYPE_TypedArrayS16] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayS16, 2, PACK_S16)
+ACCESSORS[TYPE_TypedArrayU16] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayU16, 2, PACK_U16)
+ACCESSORS[TYPE_TypedArrayS32] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayS32, 4, PACK_S32)
+ACCESSORS[TYPE_TypedArrayU32] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayU32, 4, PACK_U32)
+ACCESSORS[TYPE_TypedArrayS64] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayS64, 8, PACK_S64)
+ACCESSORS[TYPE_TypedArrayU64] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayU64, 8, PACK_U64)
+ACCESSORS[TYPE_TypedArrayF32] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayF32, 4, PACK_F32)
+ACCESSORS[TYPE_TypedArrayF64] = lambda R, pos: TypedArrayAccessor(R, pos, TYPE_TypedArrayF64, 8, PACK_F64)
 
 
 def create_accessor(R, t, pos):

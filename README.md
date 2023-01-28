@@ -24,6 +24,17 @@ This format combines the following properties:
 	- Different string types can be used (to match the application's internal string format)
 	- The prefix of the file can be changed
 
+## Why should I use this format?
+
+If one or more of the following is true about your files:
+
+- they need to be loaded quickly and/or partially
+- they can change over time in ways difficult to anticipate
+- they may need to contain big blobs of data that should not be parsed or copied several times
+- they are read more often than written (e.g. read-only compiled assets stored in an application)
+
+... then those files would very likely benefit from using this format.
+
 ## Which configuration of the format should I use?
 
 - Configuration 0 with alignment is the usual suggestion - it favors performance and compatibility without limiting usability and inspectability.
