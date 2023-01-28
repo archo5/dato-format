@@ -4,7 +4,7 @@ import struct
 import sys
 from time import time
 
-from datofmt import (encode, LinearWriter, Validator)
+from datofmt import (Builder, LinearWriter, encode, BufferReader, decode, Validator)
 
 def PERF(fn, maxtime=0.1, maxiter=100000):
 	try:
@@ -32,6 +32,8 @@ def FVALID(ref):
 		print("ERROR on line %d" % sys._getframe(1).f_lineno)
 		print("  expected:", (True, None))
 		print("  got:     ", ret)
+	else:
+		print(decode(ref))
 	return ref
 
 def CHKEQ(val, ref):

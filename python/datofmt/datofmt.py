@@ -63,6 +63,10 @@ class EncodingException(Exception):
 	pass
 
 
+class AccessException(Exception):
+	pass
+
+
 def roundup(x, n):
 	return (x + n - 1) // n * n
 
@@ -619,6 +623,286 @@ def encode(data, **kwargs):
 	W = LinearWriter(**kwargs)
 	pos = W._write_object_contents(data)
 	return W.get_encoded()
+
+
+class Accessor:
+	def get_type(self):
+		return self._type
+	def shallow_read(self):
+		return self.read()
+
+
+class SingleValueAccessor(Accessor):
+	def __init__(self, _type, _func):
+		self._type = _type
+		self._func = _func
+	def read(self):
+		return self._func()
+
+
+class ArrayAccessor(Accessor):
+	def __init__(self, R, pos):
+		self._type = TYPE_Array
+		self.R = R
+		self.pos = pos
+		self.size, self.datapos = R._get_array_size_and_data_pos(pos)
+	def __len__(self):
+		return self.size
+	def __getitem__(self, idx):
+		return self.R._get_array_value_at_index_fast(self.datapos, self.size, idx)
+	def __iter__(self):
+		return self.R._get_array_entries_direct(self.datapos, self.size)
+	def shallow_read(self):
+		return [acc for acc in self.R._get_array_entries_direct(self.datapos, self.size)]
+	def read(self):
+		return [acc.read() for acc in self.R._get_array_entries_direct(self.datapos, self.size)]
+
+
+class ObjectAccessor(Accessor):
+	def __init__(self, R, pos):
+		self._type = TYPE_Object
+		self.R = R
+		self.pos = pos
+		self.size, self.datapos = R._get_object_size_and_data_pos(pos)
+	def __len__(self):
+		return self.size
+	def __getitem__(self, key):
+		if isinstance(key, str):
+			key = key.encode("utf-8")
+		return self.R._find_value_in_object_fast(self.datapos, self.size, key)
+	def __iter__(self):
+		return self.R._get_object_entries_direct(self.datapos, self.size)
+	def shallow_read(self):
+		return { key: acc for key, acc in self.R._get_object_entries_direct(self.datapos, self.size) }
+	def read(self):
+		return { key: acc.read() for key, acc in self.R._get_object_entries_direct(self.datapos, self.size) }
+
+
+class ValueArrayAccessor(Accessor):
+	def __init__(self, R, _type, pos, esize, dectype):
+		self.R = R
+		self._type = _type
+		self.pos = pos
+		self.size, self.datapos = R._get_value_array_size_and_data_pos(pos)
+		self.esize = esize
+		self.dectype = dectype
+	def __len__(self):
+		return self.size
+
+
+class StringAccessor(ValueArrayAccessor):
+	# dectype = [element decoder, whole string decoder format]
+	def __getitem__(self, idx):
+		if idx < 0 or idx >= self.size:
+			raise AccessException("array index out of bounds - %d not in [0; %d)" %
+				(idx, self.size))
+		vpos = self.datapos + idx * self.esize
+		vend = vpos + self.esize
+		return self.dectype.unpack[0](self.R.data[vpos : vend])[0]
+	def __iter__(self):
+		for i in range(self.size):
+			vpos = self.datapos + i * self.esize
+			vend = vpos + self.esize
+			yield self.dectype.unpack[0](self.R.data[vpos : vend])
+	def read(self):
+		end = self.datapos + self.size * self.esize
+		return self.R.data[self.datapos : end].decode(self.dectype[1])
+
+
+class ByteArrayAccessor(ValueArrayAccessor):
+	def __getitem__(self, idx):
+		if idx < 0 or idx >= self.size:
+			raise AccessException("array index out of bounds - %d not in [0; %d)" %
+				(idx, self.size))
+		return self.R.data[self.datapos + idx]
+	def __iter__(self):
+		for i in range(self.size):
+			yield self.R.data[self.datapos + i]
+	def read(self):
+		return self.R.data[self.datapos : self.datapos + self.size]
+
+
+class TypedArrayAccessor(ValueArrayAccessor):
+	def __getitem__(self, idx):
+		if idx < 0 or idx >= self.size:
+			raise AccessException("array index out of bounds - %d not in [0; %d)" %
+				(idx, self.size))
+		vpos = self.datapos + idx * self.esize
+		vend = vpos + self.esize
+		return self.dectype.unpack(self.R.data[vpos : vend])[0]
+	def __iter__(self):
+		for i in range(self.size):
+			vpos = self.datapos + i * self.esize
+			vend = vpos + self.esize
+			yield self.dectype.unpack(self.R.data[vpos : vend])
+	def read(self):
+		return [v for v in self]
+
+
+ACCESSORS = {}
+
+ACCESSORS[TYPE_Null] = lambda R, pos: SingleValueAccessor(TYPE_Null, lambda: None)
+
+ACCESSORS[TYPE_Bool] = lambda R, pos: SingleValueAccessor(TYPE_Bool, lambda: pos != 0)
+ACCESSORS[TYPE_S32] = lambda R, pos: SingleValueAccessor(TYPE_S32,
+	lambda: pos - 2**32 if pos > 0x7fffffff else pos)
+ACCESSORS[TYPE_U32] = lambda R, pos: SingleValueAccessor(TYPE_U32, lambda: pos)
+ACCESSORS[TYPE_F32] = lambda R, pos: SingleValueAccessor(TYPE_F32,
+	lambda: PACK_F32.unpack(PACK_U32.pack(pos))[0])
+
+ACCESSORS[TYPE_S64] = lambda R, pos: SingleValueAccessor(TYPE_S64, lambda: R._read_s64(pos))
+ACCESSORS[TYPE_U64] = lambda R, pos: SingleValueAccessor(TYPE_U64, lambda: R._read_u64(pos))
+ACCESSORS[TYPE_F64] = lambda R, pos: SingleValueAccessor(TYPE_F64, lambda: R._read_f64(pos))
+
+ACCESSORS[TYPE_Array] = ArrayAccessor
+ACCESSORS[TYPE_Object] = ObjectAccessor
+
+ACCESSORS[TYPE_String8] = lambda R, pos: StringAccessor(R, TYPE_String8, pos, 1, (PACK_U8, "utf-8"))
+ACCESSORS[TYPE_String16] = lambda R, pos: StringAccessor(R, TYPE_String16, pos, 2, (PACK_U16, "utf-16"))
+ACCESSORS[TYPE_String32] = lambda R, pos: StringAccessor(R, TYPE_String32, pos, 4, (PACK_U32, "utf-32"))
+ACCESSORS[TYPE_ByteArray] = lambda R, pos: ByteArrayAccessor(R, TYPE_ByteArray, pos, 1, None)
+
+ACCESSORS[TYPE_TypedArrayS8] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayS8, 1, PACK_S8)
+ACCESSORS[TYPE_TypedArrayU8] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayU8, 1, PACK_U8)
+ACCESSORS[TYPE_TypedArrayS16] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayS16, 2, PACK_S16)
+ACCESSORS[TYPE_TypedArrayU16] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayU16, 2, PACK_U16)
+ACCESSORS[TYPE_TypedArrayS32] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayS32, 4, PACK_S32)
+ACCESSORS[TYPE_TypedArrayU32] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayU32, 4, PACK_U32)
+ACCESSORS[TYPE_TypedArrayS64] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayS64, 8, PACK_S64)
+ACCESSORS[TYPE_TypedArrayU64] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayU64, 8, PACK_U64)
+ACCESSORS[TYPE_TypedArrayF32] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayF32, 4, PACK_F32)
+ACCESSORS[TYPE_TypedArrayF64] = lambda R, pos: TypedArrayAccessor(R, TYPE_TypedArrayF64, 8, PACK_F64)
+
+
+def create_accessor(R, t, pos):
+	return ACCESSORS[t](R, pos)
+
+
+class BufferReader:
+	def __init__(self, data, *, prefix=b"DATO", config=Config0, ignore_key_sorting=False):
+		if not data.startswith(prefix):
+			raise AccessException("prefix found in the data did not match the specified prefix (%s)" % prefix)
+		if len(data) < len(prefix) + 2:
+			raise AccessException("invalid file (too short, broken header)")
+		if data[len(prefix)] != config.identifier:
+			raise AccessException("wrong config identifier (expected %d, got %d)",
+				config.identifier, data[len(prefix)])
+		self.data = data
+		self.flags = data[len(prefix) + 1]
+		if ignore_key_sorting:
+			self.flags &= ~FLAG_SortedKeys
+		rootpos = len(prefix) + 2
+		if self.flags & FLAG_Aligned:
+			rootpos = roundup(rootpos, 4)
+		self.root = int.from_bytes(data[rootpos:rootpos+4], "little")
+		if self.root + 4 > len(data):
+			raise AccessException("root position out of bounds")
+		self._parse_key_length = config.key_length_encoding.parse
+		self._parse_object_size = config.object_size_encoding.parse
+		self._parse_array_length = config.array_length_encoding.parse
+		self._parse_value_length = config.value_length_encoding.parse
+
+	def read(self):
+		return self.get_root_accessor().read()
+
+	def get_root_accessor(self):
+		return ObjectAccessor(self, self.root)
+
+	def _get_value_array_size_and_data_pos(self, pos):
+		return self._parse_value_length(self.data, pos)
+
+	def _get_object_size_and_data_pos(self, pos):
+		return self._parse_object_size(self.data, pos)
+
+	def _find_value_in_object_fast(self, objbasepos, objsize, key_to_find):
+		if self.flags & FLAG_SortedKeys:
+			L = 0
+			R = objsize - 1
+			while L <= R:
+				M = (L + R) // 2
+				keyM = self._get_key_at(objbasepos + M * 4, False)
+				if key_to_find == keyM:
+					vpos = objbasepos + objsize * 4 + i * 4
+					tpos = objbasepos + objsize * 8 + i
+					return create_accessor(
+						self.data[tpos],
+						int.from_bytes(self.data[vpos : vpos + 4], "little")
+					)
+				if key_to_find < keyM:
+					R = M
+				else:
+					L = M
+			return None
+		else:
+			for i in range(objsize):
+				kpos = objbasepos + i * 4
+				key = self._get_key_at(kpos, False)
+				if key == key_to_find:
+					vpos = objbasepos + objsize * 4 + i * 4
+					tpos = objbasepos + objsize * 8 + i
+					return create_accessor(
+						self,
+						self.data[tpos],
+						int.from_bytes(self.data[vpos : vpos + 4], "little")
+					)
+			return None
+
+	def _get_object_entries_direct(self, objbasepos, objsize, decode_keys=True):
+		kpos = objbasepos
+		vpos = objbasepos + objsize * 4
+		tpos = objbasepos + objsize * 8
+		for i in range(objsize):
+			key = self._get_key_at(kpos + i * 4, decode_keys)
+			vtype = self.data[tpos + i]
+			ivpos = vpos + i * 4
+			value = int.from_bytes(self.data[ivpos : ivpos + 4], "little")
+			yield (key, create_accessor(self, vtype, value))
+
+	def _get_key_at(self, pos, decode_keys):
+		key = int.from_bytes(self.data[pos : pos + 4], "little")
+		if not self.flags & FLAG_IntegerKeys:
+			key = self._read_key_bytes(key)
+			if decode_keys:
+				key = key.decode("utf-8")
+		return key
+
+	def _read_key_bytes(self, pos):
+		size, pos = self._parse_key_length(self.data, pos)
+		return self.data[pos : pos + size]
+
+	def _get_array_size_and_data_pos(self, pos):
+		return self._parse_array_length(self.data, pos)
+
+	def _get_array_value_at_index_fast(self, arrbasepos, arrsize, idx):
+		if idx < 0 or idx >= arrsize:
+			return AccessException("array index out of bounds - %d not in [0; %d)" %
+				(idx, arrsize))
+		vpos = arrbasepos + idx * 4
+		tpos = arrbasepos + arrsize * 4 + idx
+		return Value(
+			self.data[tpos],
+			int.from_bytes(self.data[vpos : vpos + 4], "little")
+		)
+
+	def _get_array_entries_direct(self, arrbasepos, arrsize):
+		vpos = arrbasepos
+		tpos = arrbasepos + arrsize * 4
+		for i in range(arrsize):
+			vtype = self.data[tpos + i]
+			ivpos = vpos + i * 4
+			value = int.from_bytes(self.data[ivpos : ivpos + 4], "little")
+			yield create_accessor(self, vtype, value)
+
+	def _read_s64(self, pos):
+		return PACK_S64.unpack(self.data[pos : pos + 8])[0]
+	def _read_u64(self, pos):
+		return PACK_U64.unpack(self.data[pos : pos + 8])[0]
+	def _read_f64(self, pos):
+		return PACK_F64.unpack(self.data[pos : pos + 8])[0]
+
+
+def decode(data, **kwargs):
+	return BufferReader(data, **kwargs).read()
 
 
 Success = "success"
