@@ -1,66 +1,91 @@
 # DATO: Directly Accessing a Tree of Objects
-## A single-parse binary file format for encoding extensible data
+An immediately traversable binary file format for encoding extensible data
 
-### Why this format?
+## Why this format?
 
 Most file formats exist in one of two categories:
 
-* Formats that require two or more passes to extract data (JSON, XML);
-	* These are inherently slow to parse.
-* Formats that require matching schemas between parsing and writing (RIFF, flatbuffers);
-	* These need to have prebuilt upgrade paths.
+- Formats that require two or more passes to extract data (JSON, XML);
+	- These are inherently slow to parse.
+- Formats that require matching schemas between parsing and writing (RIFF, flatbuffers);
+	- These need to have prebuilt upgrade paths, which are typically very limited.
 
 This format combines the following properties:
 
-* **Single-parse** - the data can be accessed directly, without pre-parsing it, for improved parsing speed
-	* The data can be optionally aligned to further improve parsing speed on CPUs that don't support unaligned loads natively
-* **Traversable** - there are built-in structures for interpreting most data, which allows the following:
-	* Changing the format of any object while retaining backwards compatibility
-	* Partially inspecting and validating the data without knowing the entire format
-* **Customizable** - the exact details of the format can be optimized for the particular application:
-	* It is possible to add more data types
-	* The encoding of various length/size values can be changed to optimize for size or performance
-	* Object keys can be either names (for readability) or 32-bit hashes (for reduced size and parsing speed)
-	* Different string types can be used (to match the application's internal string format)
-	* The prefix of the file can be changed
+- **Direct access** - the data can be accessed directly, without pre-parsing it, for reduced total parsing time
+	- The data can be optionally aligned to further improve parsing speed on CPUs that don't support unaligned loads natively
+- **Generic** and **Traversable** - there are various built-in structures for storing most data, which allows the following:
+	- Changing the format of any object while retaining backwards compatibility
+	- Partially inspecting and validating the data without having to knowing the entire format including names of stored values and special meanings of byte ranges
+- **Customizable** - the exact details of the format can be optimized for the particular application:
+	- It is possible to add more data types
+	- The encoding of various length/size values can be changed to optimize for size or performance
+	- Object keys can be either names (for readability) or 32-bit hashes (for reduced size and parsing speed)
+	- Different string types can be used (to match the application's internal string format)
+	- The prefix of the file can be changed
 
-### The file format specification (**warning: not finalized at this point - minor details may change**)
+## Which configuration of the format should I use?
+
+- Configuration 0 with alignment is the usual suggestion - it favors performance and compatibility without limiting usability and inspectability.
+
+Size encoding configurations:
+
+- in the order of most performant to smallest: 0, 1, 3, 4, 2
+- **0**: all sizes are 32-bit
+	- Optimizes for reading speed at the cost of size
+	- Compatible with all data
+- **1**: key, object and generic array sizes are 32-bit, typed array sizes are variable-length (8-40 bits)
+	- Shifts the optimization towards size at a minor cost to reading speed
+	- Compatible with all data
+- **2**: all sizes are variable-length (8-40 bits)
+	- Optimizes for size at the cost of reading speed
+	- Compatible with all data
+- **3**: key and object sizes are 8-bit, array sizes are 32-bit
+	- Optimizes for reading speed first, then size
+	- Breaks compatibility with objects exceeding 255 properties and keys longer than 255 bytes
+- **4**: key and object sizes are 8-bit, array sizes are variable-length (8-40 bits)
+	- Optimizes for size first, then reading speed
+	- Breaks compatibility with objects exceeding 255 properties and keys longer than 255 bytes
+- Custom configurations can be created as well.
+
+Additional options:
+
+- Alignment can be disabled to reduce size at the cost of traversal speed (at least on some platforms).
+- Key sorting can be enabled to improve lookup speed at the cost of serialization speed.
+- Integer keys can be enabled together with using key prehashing in user code to improve the speed of both serialization and parsing, as well reduce the file size, at the cost of reduced or more complicated inspectability of the file, and having to make the hash an unremovable part of the format.
+
+## The file format specification (**warning: not finalized at this point - minor details may change**)
 
 ```py
 FILE =
 {
 	PREFIX-BYTES
-	CONFIG-BYTE
+	SIZE-ENC-CONFIG-BYTE
 	PROPERTY-BYTE
 	ALIGN(4)
 	REF(OBJECT)
 }
 
-PREFIX-BYTES = "DATO"
-# can be overridden
+PREFIX-BYTES = "DATO" | [user-defined]
 
-CONFIG-BYTE = 0 | 1 | 2 | 3 | [128;255]
-# values: 0-3 refer to standardized configurations, 4-127 are reserved, ..
-# .. 128-255 can be used for specifying application-specific configurations
-# config 0: file is aligned, all sizes are 32-bit
-#	- Optimizes for reading speed at the cost of size while remaining compatible with all data
-# config 1: file is unaligned, all sizes are variable-length (8-40 bits)
-#	- Optimizes for size at the cost of reading speed while remaining compatible with all data
-# config 2: file is aligned, key and object sizes are 8-bit, array sizes are 32-bit
-#	- Optimizes for reading speed first, then size, while breaking compatibility with large objects and keys
-# config 3: file is unaligned, key and object sizes are 8-bit, array sizes are variable-length (8-40 bits)
-#	- Optimizes for size first, then reading speed, while breaking compatibility with large objects and keys
+SIZE-ENC-CONFIG-BYTE = [0;4] | [128;255]
+# values:
+# - 0-4 refer to standardized size encoding configurations
+# - 5-127 are reserved
+# - 128-255 can be used for specifying application-specific configurations
 
-PROPERTY-BYTE = [0 1 R R R R R R]
+PROPERTY-BYTE = [0 1 2 R R R R R]
 # values are flags:
-# - bit 0 specifies whether integer keys are used (1 = yes)
+# - bit 0 specifies whether the file is aligned (1 = yes)
+#	- alignment applies to every element larger than one byte - they are expected to be placed at an offset that is a multiple of its size, e.g. uint32 could be placed at offset 24 (4*6) or 52 (4*13) but not 37
+# - bit 1 specifies whether integer keys are used (1 = yes)
 #	- integer keys do not point to a KEY-STRING reference but instead are themselves identifiers
-# - bit 1 specifies whether the keys are sorted (1 = yes)
-#	- integer keys are expected to be sorted by value, string keys by content (case-sensitive)
-# - bits 2-7 are reserved
+# - bit 2 specifies whether the keys are sorted (1 = yes)
+#	- integer keys are expected to be sorted by value (uint32), string keys by content (case-sensitive)
+# - bits 3-7 are reserved
 
-ALIGN(N) = 0 ... 0[N-1]
-# if alignment is enabled, this contains up to N-1 zeroes, to align the in-file position to [x % N = 0]
+ALIGN(...) = [empty] ... 0[N]
+# if alignment is enabled, this contains 0 or more zero-bytes, to align the in-file position of each subsequent value contained in the structure to its natural (or explicitly specified) alignment
 
 REF(T) = uint32
 # an offset from the start of the file (before the prefix)
@@ -69,6 +94,7 @@ REF(T) = uint32
 OBJECT =
 {
 	ALIGN(SIZE(OBJECT), 4) # for mixed-value sizes, the alignment must take into account all the values
+	# <- start (where references point to)
 	size = SIZE(OBJECT) # the number of properties in the object
 	keys = KEY[size]
 	values = VALUE[size]
@@ -78,6 +104,7 @@ OBJECT =
 ARRAY =
 {
 	ALIGN(SIZE(ARRAY), 4) # for mixed-value sizes, the alignment must take into account all the values
+	# <- start (where references point to)
 	size = SIZE(ARRAY)
 	values = VALUE[size]
 	types = TYPE[size]
@@ -87,6 +114,7 @@ TYPED-ARRAY(T, alignment=sizeof(T), null_terminated=False) =
 # in this spec, T optionally specifies the array element type
 {
 	ALIGN(SIZE(TYPED-ARRAY), alignment) # for mixed-value sizes, the alignment must take into account all the values
+	# <- start (where references point to)
 	size = SIZE(TYPED-ARRAY)
 	values = T[size]
 	if null_terminated: T(0)
@@ -100,8 +128,9 @@ STRING-32 = BYTE-ARRAY(char32, null_terminated=True)
 SIZE(T) = [depends on encoding]
 {
 	option 1: uint8(n)
-	option 2: uint32(n)
-	option 3:
+	option 2: uint16(n) # currently unused by any of the predefined configurations
+	option 3: uint32(n)
+	option 4:
 	- if n < 255: uint8(n)
 	- if n >= 255: uint8(255) uint32(n)
 }
@@ -111,6 +140,7 @@ KEY = uint32 | REF(KEY-STRING)
 KEY-STRING =
 {
 	ALIGN(SIZE(KEY-STRING)) # for mixed-value sizes, the alignment must take into account all the values
+	# <- start (where references point to)
 	size = SIZE(KEY-STRING) # the number of characters in the key string (excludes the terminating zero)
 	data = char[size]
 	char(0)
@@ -154,13 +184,13 @@ TYPE = uint8
 - 128-255: application-specific
 ```
 
-### What was considered and rejected for the format?
+## What was considered and rejected for the format?
 
 - **Interleaved object entries**:
 	- They required the largest alignment value to be applied for the entire entry (making it 12 bytes big), which effectively added 3 bytes of padding due to the type being 1 byte big initially.
 	- For bigger objects, they would make it necessary to pull unused memory into cache before iterating the keys to find the necessary value.
 - **Objects/arrays not requiring temporary storage to serialize**:
-	- This would lead to a huge increase in overall complexity and size due to requiring a linked/skip list of object fields/array elements. This linked list would also make it impossible to do a binary search on object keys.
+	- This would lead to a huge increase in overall complexity and size due to requiring a linked/skip list of object fields/array elements. This linked list would also make it impossible to do a binary search on object keys and a fast element lookup on arrays.
 - **Putting types with the value (as opposed to with the object that refers to the value)**:
 	- This removes the possibility of inlining smaller values effectively
 		- For example, currently storing any 32-bit value requires 1 byte for type and 4 bytes for the value.
@@ -176,3 +206,11 @@ TYPE = uint8
 	- The idea was that e.g. one array type had an uint8 length value and another one had uint32.
 	- This would make a parser more difficult to test by creating more code paths that would be rarely used (which would make them prone to breaking at the exact point when they become useful).
 	- This would also reduce the number of available indices for additional types, although we are unlikely to run out of them soon - except in the case when flagging is used (such as by dedicating some top bits for different encodings).
+- **Having multiple byte array types with different alignment**:
+	- This effectively mostly just makes the parsing harder and does not guarantee the actual alignment (which can be validated manually).
+- **Replacing typed arrays with aligned arrays**:
+	- This would reduce the inspectability of data using this format and even when using a tool to dump the contents of a file, would require, for example, knowing the typical floating point number values/ranges in hex to see which arrays contain floating point values instead of fairly large integers.
+- **Picking one configuration for all users**:
+	- Having reviewed a number of custom-made formats, it was clear that different teams have different preferences and risk tolerances - for example:
+		- Some prefer to use string keys and others are consistently preferring hashes.
+		- Some are fine to set project-wide limitations in the name of performance while others like to keep their options open.

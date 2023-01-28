@@ -47,6 +47,18 @@ PACK_F32 = struct.Struct("<f")
 PACK_F64 = struct.Struct("<d")
 
 
+FLAG_Aligned = 1 << 0
+FLAG_IntegerKeys = 1 << 1
+FLAG_SortedKeys = 1 << 2
+
+def generate_flags(aligned, integer_keys, sorted_keys):
+	val = 0
+	if aligned: val |= FLAG_Aligned
+	if integer_keys: val |= FLAG_IntegerKeys
+	if sorted_keys: val |= FLAG_SortedKeys
+	return val
+
+
 class EncodingException(Exception):
 	pass
 
@@ -66,8 +78,29 @@ class EncodingU8:
 				W.data.append(0)
 		W.data.append(intval)
 		return pos
-	def parse(R, pos):
-		return int(R.data[pos]), pos + 1
+	def parse(data, pos):
+		if pos >= len(data):
+			return None, None
+		return int(data[pos]), pos + 1
+
+
+class EncodingU16:
+	def write(W, intval, value_alignment):
+		if intval < 0 or intval > 0xffff:
+			raise EncodingException("expected length between 0 and 2^16-1, got %s" % intval)
+		pos = len(W.data)
+		if value_alignment is not None:
+			if value_alignment < 2:
+				value_alignment = 2
+			pos = roundup(pos, value_alignment)
+			while len(W.data) < pos:
+				W.data.append(0)
+		W.data.extend(intval.to_bytes(2, "little"))
+		return pos
+	def parse(data, pos):
+		if pos + 2 > len(data):
+			return None, None
+		return int.from_bytes(data[pos:pos+2], "little"), pos + 2
 
 
 class EncodingU32:
@@ -83,8 +116,10 @@ class EncodingU32:
 				W.data.append(0)
 		W.data.extend(intval.to_bytes(4, "little"))
 		return pos
-	def parse(R, pos):
-		return int.from_bytes(R.data[pos:pos+4], "little"), pos + 4
+	def parse(data, pos):
+		if pos + 4 > len(data):
+			return None, None
+		return int.from_bytes(data[pos:pos+4], "little"), pos + 4
 
 
 class EncodingU8X32:
@@ -108,29 +143,40 @@ class EncodingU8X32:
 			W.data.append(255)
 			W.data.extend(intval.to_bytes(4, "little"))
 		return pos
-	def parse(R, pos):
-		v = int(R.data[pos])
+	def parse(data, pos):
+		if pos >= len(data):
+			return None, None
+		v = int(data[pos])
 		pos += 1
 		if v != 255:
 			return v, pos
 		else:
-			return int.from_bytes(R.data[pos:pos+4], "little"), pos + 4
+			if pos + 4 > len(data):
+				return None, None
+			return int.from_bytes(data[pos:pos+4], "little"), pos + 4
 
 
 """Optimizes for reading speed at the cost of size while remaining compatible with all data"""
 class Config0:
 	identifier = 0
-	aligned = True
 	key_length_encoding = EncodingU32
 	object_size_encoding = EncodingU32
 	array_length_encoding = EncodingU32
 	value_length_encoding = EncodingU32
 
 
-"""Optimizes for size at the cost of reading speed while remaining compatible with all data"""
+"""Optimizes slightly towards size for a minor reading speed cost while remaining compatible with all data"""
 class Config1:
 	identifier = 1
-	aligned = False
+	key_length_encoding = EncodingU32
+	object_size_encoding = EncodingU32
+	array_length_encoding = EncodingU32
+	value_length_encoding = EncodingU8X32
+
+
+"""Optimizes for size at the cost of reading speed while remaining compatible with all data"""
+class Config2:
+	identifier = 2
 	key_length_encoding = EncodingU8X32
 	object_size_encoding = EncodingU8X32
 	array_length_encoding = EncodingU8X32
@@ -138,9 +184,8 @@ class Config1:
 
 
 """Optimizes for reading speed first, then size, while breaking compatibility with large objects and keys"""
-class Config2:
-	identifier = 2
-	aligned = True
+class Config3:
+	identifier = 3
 	key_length_encoding = EncodingU8
 	object_size_encoding = EncodingU8
 	array_length_encoding = EncodingU32
@@ -148,9 +193,8 @@ class Config2:
 
 
 """Optimizes for size first, then reading speed, while breaking compatibility with large objects and keys"""
-class Config3:
-	identifier = 3
-	aligned = False
+class Config4:
+	identifier = 4
 	key_length_encoding = EncodingU8
 	object_size_encoding = EncodingU8
 	array_length_encoding = EncodingU8X32
@@ -182,26 +226,32 @@ class Builder:
 	def __init__(
 		self,
 		*,
-		skip_duplicate_keys=True,
 		prefix=b"DATO",
-		config=Config0
+		config=Config0,
+		aligned=True,
+		skip_duplicate_keys=True,
+		integer_keys=False,
+		sort_keys=False
 	):
 		# settings
-		if config.identifier >= 4 and config.identifier <= 127:
-			raise EncodingException("reserved identifier (4-127) used: %d", config.identifier)
-		self.skip_duplicate_keys = skip_duplicate_keys
-		self.aligned = config.aligned
+		if config.identifier >= 5 and config.identifier <= 127:
+			raise EncodingException("reserved identifier (5-127) used: %d", config.identifier)
 		self._append_key_length = config.key_length_encoding.write
 		self._append_object_size = config.object_size_encoding.write
 		self._append_array_length = config.array_length_encoding.write
 		self._append_value_length = config.value_length_encoding.write
+		self.aligned = aligned
+		self.skip_duplicate_keys = skip_duplicate_keys
+		self.integer_keys = integer_keys
+		self.sort_keys = sort_keys
 		# state
 		self.data = bytearray(prefix)
 		self.written_keys = {}
 		# header
 		self.data.append(config.identifier)
+		self.data.append(generate_flags(aligned, integer_keys, sort_keys))
 		# - reserve space for the root pointer
-		if self.aligned:
+		if aligned:
 			pos = roundup(len(self.data), 4)
 			while len(self.data) < pos:
 				self.data.append(0)
@@ -344,25 +394,31 @@ class LinearWriter:
 	def __init__(
 		self,
 		*,
-		skip_duplicate_keys=True,
 		prefix=b"DATO",
-		config=Config0
+		config=Config0,
+		aligned=True,
+		skip_duplicate_keys=True,
+		integer_keys=False,
+		sort_keys=False
 	):
 		# settings
-		if config.identifier >= 4 and config.identifier <= 127:
-			raise EncodingException("reserved identifier (4-127) used: %d", config.identifier)
-		self.skip_duplicate_keys = skip_duplicate_keys
-		self.aligned = config.aligned
+		if config.identifier >= 5 and config.identifier <= 127:
+			raise EncodingException("reserved identifier (5-127) used: %d", config.identifier)
 		self._append_key_length = config.key_length_encoding.write
 		self._append_object_size = config.object_size_encoding.write
 		self._append_array_length = config.array_length_encoding.write
 		self._append_value_length = config.value_length_encoding.write
+		self.aligned = aligned
+		self.skip_duplicate_keys = skip_duplicate_keys
+		self.integer_keys = integer_keys
+		self.sort_keys = sort_keys
 		# state
 		self.data = bytearray(prefix)
 		self.stack = [StagingObject(True)]
 		self.written_keys = {}
 		# header
 		self.data.append(config.identifier)
+		self.data.append(generate_flags(aligned, integer_keys, sort_keys))
 		# - reserve space for the root pointer
 		if self.aligned:
 			pos = roundup(len(self.data), 4)
@@ -435,7 +491,7 @@ class LinearWriter:
 		self.data.extend(PACK_F64.pack(val))
 		self._write_elem(key, TYPE_F64, pos)
 
-	def write_string(self, key, val):
+	def write_string_utf8(self, key, val):
 		val = str(val).encode("utf-8")
 		pos = self._append_value_length(self, len(val), 1 if self.aligned else None)
 		self.data.extend(val)
@@ -565,15 +621,20 @@ def encode(data, **kwargs):
 	return W.get_encoded()
 
 
+Success = "success"
+ErrorMissingPrefix = "missing_prefix"
+ErrorEOF = "eof"
+ErrorWrongConfig = "wrong_config"
+ErrorUnaligned = "unaligned"
+ErrorBadKeyOrder = "bad_key_order"
+ErrorUnknownBuiltInType = "unknown_built_in_type"
+ErrorMissingNullTerminator = "missing_null_terminator"
+ErrorBadData = "bad_data"
+
 class Validator:
-	Success = "success"
-	ErrorMissingPrefix = "missing_prefix"
-	ErrorEOF = "eof"
-	ErrorWrongConfig = "wrong_config"
 	def __init__(self, *, prefix=b"DATO", config=Config0):
 		self.prefix = prefix
 		self.identifier = config.identifier
-		self.aligned = config.aligned
 		self._parse_key_length = config.key_length_encoding.parse
 		self._parse_object_size = config.object_size_encoding.parse
 		self._parse_array_length = config.array_length_encoding.parse
@@ -583,20 +644,151 @@ class Validator:
 		if not data.startswith(self.prefix):
 			return False, ErrorMissingPrefix
 		pos = len(self.prefix)
-		if pos + 1 > len(data):
+		if pos + 2 > len(data):
 			return False, ErrorEOF
 		identifier = data[pos]
 		if identifier != self.identifier:
 			return False, ErrorWrongConfig
-		if self.aligned:
+		pos += 1
+		flags = data[pos]
+		pos += 1
+		if flags & FLAG_Aligned:
 			pos = roundup(pos, 4)
 		if pos + 4 > len(data):
 			return False, ErrorEOF
-		return self._validate_object_ref(data, pos)
-
-	def _validate_object_ref(self, data, pos):
 		pos = int.from_bytes(data[pos : pos + 4], "little")
-		if pos + 1 > len(data):
+		return self._validate_object(flags, data, pos)
+
+	def _validate_object(self, flags, data, pos):
+		# object size value
+		size, pos = self._parse_object_size(data, pos)
+		if size is None:
 			return False, ErrorEOF
-		pos = POS
+		# object data range
+		if flags & FLAG_Aligned and pos % 4 != 0:
+			return False, ErrorUnaligned
+		if pos + size * 9 > len(data):
+			return False, ErrorEOF
+		if size == 0:
+			return True, None
+		# validate keys
+		if flags & FLAG_IntegerKeys:
+			if flags & FLAG_SortedKeys:
+				prev = -1
+				for i in range(size):
+					kpos = pos + i * 4
+					curr = int.from_bytes(data[kpos : kpos + 4], "little")
+					if prev >= curr:
+						return False, ErrorBadKeyOrder
+					prev = curr
+		else:
+			pkey = None
+			for i in range(size):
+				kpos = pos + i * 4
+				curr = int.from_bytes(data[kpos : kpos + 4], "little")
+				ckey, err = self._validate_key(flags, data, curr)
+				if ckey is False:
+					return ckey, err
+				if flags & FLAG_SortedKeys:
+					if pkey is not None and pkey >= ckey:
+						return False, ErrorBadKeyOrder
+					pkey = ckey
+
+		# validate types and values
+		return self._validate_types_and_values(flags, data, size, pos + size * 4)
+
+	def _validate_types_and_values(self, flags, data, size, vpos):
+		tpos = vpos + size * 4
+		for i in range(size):
+			vtype = data[tpos + i]
+			if vtype > 23 and vtype < 128:
+				return False, ErrorUnknownBuiltInType
+			if vtype <= 23:
+				cvp = vpos + i * 4
+				val = int.from_bytes(data[cvp : cvp + 4], "little")
+				valid, err = self._validate_value(flags, data, vtype, val)
+				if valid is False:
+					return valid, err
+		return True, None
+
+	def _validate_value(self, flags, data, vtype, val):
+		if vtype == TYPE_Null:
+			if val != 0:
+				return False, ErrorBadData
+			return True, None
+		if vtype == TYPE_Bool:
+			if val != 0 and val != 1:
+				return False, ErrorBadData
+			return True, None
+		if vtype == TYPE_S32 or vtype == TYPE_U32 or vtype == TYPE_F32:
+			# the value cannot be validated
+			return True, None
+		pos = val
+		if vtype == TYPE_S64 or vtype == TYPE_U64 or vtype == TYPE_F64:
+			if pos + 8 > len(data):
+				return False, ErrorEOF
+			if flags & FLAG_Aligned:
+				if pos % 8 != 0:
+					return False, ErrorUnaligned
+			# the value cannot be validated
+			return True, None
+		if vtype == TYPE_Array: return self._validate_array(flags, data, pos)
+		if vtype == TYPE_Object: return self._validate_object(flags, data, pos)
+		if vtype == TYPE_String8: return self._validate_typed_array(flags, data, pos, 1, True)
+		if vtype == TYPE_String16: return self._validate_typed_array(flags, data, pos, 2, True)
+		if vtype == TYPE_String32: return self._validate_typed_array(flags, data, pos, 4, True)
+		if vtype == TYPE_ByteArray: return self._validate_typed_array(flags, data, pos, 1, False)
+		if vtype == TYPE_TypedArrayS8: return self._validate_typed_array(flags, data, pos, 1, False)
+		if vtype == TYPE_TypedArrayU8: return self._validate_typed_array(flags, data, pos, 1, False)
+		if vtype == TYPE_TypedArrayS16: return self._validate_typed_array(flags, data, pos, 2, False)
+		if vtype == TYPE_TypedArrayU16: return self._validate_typed_array(flags, data, pos, 2, False)
+		if vtype == TYPE_TypedArrayS32: return self._validate_typed_array(flags, data, pos, 4, False)
+		if vtype == TYPE_TypedArrayU32: return self._validate_typed_array(flags, data, pos, 4, False)
+		if vtype == TYPE_TypedArrayS64: return self._validate_typed_array(flags, data, pos, 8, False)
+		if vtype == TYPE_TypedArrayU64: return self._validate_typed_array(flags, data, pos, 8, False)
+		if vtype == TYPE_TypedArrayF32: return self._validate_typed_array(flags, data, pos, 4, False)
+		if vtype == TYPE_TypedArrayF64: return self._validate_typed_array(flags, data, pos, 8, False)
+		return False, "internal_error(type=%d, value=%d/0x%x)" % (vtype, val, val)
+
+	def _validate_array(self, flags, data, pos):
+		# length value
+		arrlen, pos = self._parse_array_length(data, pos)
+		if arrlen is None:
+			return False, ErrorEOF
+		# structure
+		if pos + arrlen * 5 > len(data):
+			return False, ErrorEOF
+		if flags & FLAG_Aligned:
+			if pos % 4 != 0:
+				return False, ErrorUnaligned
+		return self._validate_types_and_values(flags, data, arrlen, pos)
+
+	def _validate_key(self, flags, data, pos):
+		# length value
+		keylen, pos = self._parse_key_length(data, pos)
+		if keylen is None:
+			return False, ErrorEOF
+		# data
+		if pos + keylen + 1 > len(data):
+			return False, ErrorEOF
+		if data[pos + keylen] != 0:
+			return False, ErrorMissingNullTerminator
+		return data[pos : pos + keylen], None
+
+	def _validate_typed_array(self, flags, data, pos, esize, nullterm):
+		# length value
+		arrlen, pos = self._parse_value_length(data, pos)
+		if arrlen is None:
+			return False, ErrorEOF
+		# data
+		if pos + (arrlen + (1 if nullterm else 0)) * esize > len(data):
+			return False, ErrorEOF
+		if flags & FLAG_Aligned:
+			if pos % esize != 0:
+				return False, ErrorUnaligned
+		if nullterm:
+			for i in range(esize):
+				if data[pos + arrlen * esize + i] != 0:
+					return False, ErrorMissingNullTerminator
+		return True, None
 
