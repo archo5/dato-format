@@ -20,7 +20,8 @@ This format combines the following properties:
 - **Customizable** - the exact details of the format can be optimized for the particular application:
 	- It is possible to add more data types
 	- The encoding of various length/size values can be changed to optimize for size or performance
-	- Object keys can be either names (for readability) or 32-bit hashes (for reduced size and parsing speed)
+	- Object keys can be either names (for readability) or 32-bit integers (for reduced size and parsing speed)
+		- Integer keys can be hashes, enum values, indices or FOURCC codes
 	- Different string types can be used (to match the application's internal string format)
 	- The prefix of the file can be changed
 
@@ -32,8 +33,21 @@ If one or more of the following is true about your files:
 - they can change over time in ways difficult to anticipate
 - they may need to contain big blobs of data that should not be parsed or copied several times
 - they are read more often than written (e.g. read-only compiled assets stored in an application)
+- they contain a large amount of floating point numbers
 
 ... then those files would very likely benefit from using this format.
+
+## When shouldn't I use this format?
+
+Apart from the obvious (e.g. downsides of a binary format) don't use it if:
+
+- you need the smallest file size or bandwidth usage
+	- (it allows hand-optimizing heavy reuse but will compress relatively poorly and create high structural overhead compared to other formats)
+	- This includes most use cases where files are constantly sent over the network.
+- your data is structure-heavy instead of data-heavy
+	- While this format can easily store lots of numbers fairly efficiently, it will not be as efficient if there are lots of generic arrays and objects instead.
+
+Some tradeoffs however may be explored in the future (including finding ways to make the format more friendly to compression, possibly at the cost of a short pre-pass).
 
 ## Which configuration of the format should I use?
 
@@ -63,7 +77,7 @@ Additional options:
 
 - Alignment can be disabled to reduce size at the cost of traversal speed (at least on some platforms).
 - Key sorting can be enabled to improve lookup speed at the cost of serialization speed.
-- Integer keys can be enabled together with using key prehashing in user code to improve the speed of both serialization and parsing, as well reduce the file size, at the cost of reduced or more complicated inspectability of the file, and having to make the hash an unremovable part of the format.
+- Integer keys can be enabled together with using key prehashing/enumeration in user code to improve the speed of both serialization and parsing, as well reduce the file size, at the cost of reduced or more complicated inspectability of the file, and having to make the key mapping logic an unremovable part of the format.
 
 ## The file format specification (**warning: not finalized at this point - minor details may change**)
 
@@ -85,15 +99,21 @@ SIZE-ENC-CONFIG-BYTE = [0;4] | [128;255]
 # - 5-127 are reserved
 # - 128-255 can be used for specifying application-specific configurations
 
-PROPERTY-BYTE = [0 1 2 R R R R R]
+PROPERTY-BYTE = [0 1 2 3 4 R R R]
 # values are flags:
 # - bit 0 specifies whether the file is aligned (1 = yes)
 #	- alignment applies to every element larger than one byte - they are expected to be placed at an offset that is a multiple of its size, e.g. uint32 could be placed at offset 24 (4*6) or 52 (4*13) but not 37
 # - bit 1 specifies whether integer keys are used (1 = yes)
 #	- integer keys do not point to a KEY-STRING reference but instead are themselves identifiers
 # - bit 2 specifies whether the keys are sorted (1 = yes)
-#	- integer keys are expected to be sorted by value (uint32), string keys by content (case-sensitive)
-# - bits 3-7 are reserved
+#	- integer keys are expected to be sorted by value (uint32), string keys by content (comparing byte values)
+# - bit 3 specifies whether the file is big endian (1 = big endian, 0 = little endian)
+#	- encoders and decoders are only expected to support platform-native endianness (usually little)!
+# - bit 4 specifies whether object references are saved absolute or relative to object starting position
+#	- (1 = relative to object position after alignment and length, 0 = absolute)
+#	- this makes serialization and parsing slightly slower and more complicated ..
+#	.. but significantly improves the compressibility of the data
+# - bits 5-7 are reserved
 
 ALIGN(...) = [empty] ... 0[N]
 # if alignment is enabled, this contains 0 or more zero-bytes, to align the in-file position of each subsequent value contained in the structure to its natural (or explicitly specified) alignment
@@ -107,7 +127,7 @@ OBJECT =
 	ALIGN(SIZE(OBJECT), 4) # for mixed-value sizes, the alignment must take into account all the values
 	# <- start (where references point to)
 	size = SIZE(OBJECT) # the number of properties in the object
-	keys = KEY[size]
+	keys = KEY[size] # no duplicates allowed!
 	values = VALUE[size]
 	types = TYPE[size]
 }

@@ -50,12 +50,15 @@ PACK_F64 = struct.Struct("<d")
 FLAG_Aligned = 1 << 0
 FLAG_IntegerKeys = 1 << 1
 FLAG_SortedKeys = 1 << 2
+FLAG_BigEndian = 1 << 3
+FLAG_RelativeObjectRefs = 1 << 4
 
-def generate_flags(aligned, integer_keys, sorted_keys):
+def generate_flags(aligned, integer_keys, sorted_keys, relative_object_refs):
 	val = 0
 	if aligned: val |= FLAG_Aligned
 	if integer_keys: val |= FLAG_IntegerKeys
 	if sorted_keys: val |= FLAG_SortedKeys
+	if relative_object_refs: val |= FLAG_RelativeObjectRefs
 	return val
 
 
@@ -235,7 +238,8 @@ class Builder:
 		aligned=True,
 		skip_duplicate_keys=True,
 		integer_keys=False,
-		sort_keys=False
+		sort_keys=False,
+		relative_object_refs=False
 	):
 		# settings
 		if config.identifier >= 5 and config.identifier <= 127:
@@ -248,12 +252,13 @@ class Builder:
 		self.skip_duplicate_keys = skip_duplicate_keys
 		self.integer_keys = integer_keys
 		self.sort_keys = sort_keys
+		self.relative_object_refs = relative_object_refs
 		# state
 		self.data = bytearray(prefix)
 		self.written_keys = {}
 		# header
 		self.data.append(config.identifier)
-		self.data.append(generate_flags(aligned, integer_keys, sort_keys))
+		self.data.append(generate_flags(aligned, integer_keys, sort_keys, relative_object_refs))
 		# - reserve space for the root pointer
 		if aligned:
 			pos = roundup(len(self.data), 4)
@@ -413,7 +418,8 @@ class LinearWriter:
 		aligned=True,
 		skip_duplicate_keys=True,
 		integer_keys=False,
-		sort_keys=False
+		sort_keys=False,
+		relative_object_refs=False
 	):
 		# settings
 		if config.identifier >= 5 and config.identifier <= 127:
@@ -426,13 +432,14 @@ class LinearWriter:
 		self.skip_duplicate_keys = skip_duplicate_keys
 		self.integer_keys = integer_keys
 		self.sort_keys = sort_keys
+		self.relative_object_refs = relative_object_refs
 		# state
 		self.data = bytearray(prefix)
 		self.stack = [StagingObject(True)]
 		self.written_keys = {}
 		# header
 		self.data.append(config.identifier)
-		self.data.append(generate_flags(aligned, integer_keys, sort_keys))
+		self.data.append(generate_flags(aligned, integer_keys, sort_keys, relative_object_refs))
 		# - reserve space for the root pointer
 		if self.aligned:
 			pos = roundup(len(self.data), 4)
@@ -586,7 +593,12 @@ class LinearWriter:
 		for e in S.entries:
 			self.data.extend(e.key.to_bytes(4, "little"))
 		for e in S.entries:
-			self.data.extend(e.val.to_bytes(4, "little"))
+			if self.relative_object_refs and e.vtype >= TYPE_S64 and e.vtype <= TYPE_TypedArrayF64:
+				delta = pos - e.val
+				if delta < 0: delta += 2**32
+				self.data.extend(delta.to_bytes(4, "little"))
+			else:
+				self.data.extend(e.val.to_bytes(4, "little"))
 		for e in S.entries:
 			self.data.append(e.vtype)
 
@@ -633,7 +645,7 @@ class LinearWriter:
 					self.write_uint64(key, val)
 			return
 		if isinstance(val, float): self.write_float64(key, val); return
-		if isinstance(val, str): self.write_string(key, val); return
+		if isinstance(val, str): self.write_string_utf8(key, val); return
 		if isinstance(val, (bytes, bytearray)): self.write_bytes(key, val); return
 		if isinstance(val, list):
 			self.begin_array(key)
