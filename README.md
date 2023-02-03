@@ -31,6 +31,7 @@ If one or more of the following is true about your files:
 
 - they need to be loaded quickly and/or partially
 - they can change over time in ways difficult to anticipate
+- it would be cumbersome to produce or maintain an explicit schema for them
 - they may need to contain big blobs of data that should not be parsed or copied several times
 - they are read more often than written (e.g. read-only compiled assets stored in an application)
 - they contain a large amount of floating point numbers
@@ -44,7 +45,7 @@ Apart from the obvious (e.g. downsides of a binary format) don't use it if:
 - you need the smallest file size or bandwidth usage
 	- (it allows hand-optimizing heavy reuse but will compress relatively poorly and create high structural overhead compared to other formats)
 	- This includes most use cases where files are constantly sent over the network.
-- your data is structure-heavy instead of data-heavy
+- your data has more structures than numbers
 	- While this format can easily store lots of numbers fairly efficiently, it will not be as efficient if there are lots of generic arrays and objects instead.
 
 Some tradeoffs however may be explored in the future (including finding ways to make the format more friendly to compression, possibly at the cost of a short pre-pass).
@@ -152,9 +153,9 @@ TYPED-ARRAY(T, alignment=sizeof(T), null_terminated=False) =
 }
 # variations of typed array:
 BYTE-ARRAY(alignment) = TYPED-ARRAY(u8, alignment)
-STRING-8 = BYTE-ARRAY(char8, null_terminated=True)
-STRING-16 = BYTE-ARRAY(char16, null_terminated=True)
-STRING-32 = BYTE-ARRAY(char32, null_terminated=True)
+STRING-8 = TYPED-ARRAY(char8, null_terminated=True)
+STRING-16 = TYPED-ARRAY(char16, null_terminated=True)
+STRING-32 = TYPED-ARRAY(char32, null_terminated=True)
 
 SIZE(T) = [depends on encoding]
 {
@@ -177,7 +178,26 @@ KEY-STRING =
 	char(0)
 }
 
-VALUE = int32 | uint32 | float32 | REF(int64 | uint64 | float64 | ARRAY | OBJECT | TYPED-ARRAY | STRING)
+VECTOR(T) =
+{
+	ALIGN(T - 2)
+	# <- start (where references point to)
+	subtype = SUBTYPE
+	vecsize = uint8 # must be >= 1
+	data = T[vecsize]
+}
+
+VECTOR-ARRAY(T) =
+{
+	ALIGN((SIZE(VECTOR-ARRAY), T) - 2) # for mixed-value sizes, the alignment must take into account all the values
+	# <- start (where references point to)
+	subtype = SUBTYPE
+	vecsize = uint8 # must be >= 1
+	count = SIZE(VECTOR-ARRAY)
+	values = T[vecsize * count]
+}
+
+VALUE = int32 | uint32 | float32 | REF(int64 | uint64 | float64 | ARRAY | OBJECT | TYPED-ARRAY | VECTOR | VECTOR-ARRAY)
 
 TYPE = uint8
 - 0: null (value = 0)
@@ -200,19 +220,22 @@ TYPE = uint8
 - 11: string, 16-bit characters (value = REF(STRING-16))
 - 12: string, 32-bit characters (value = REF(STRING-32))
 - 13: byte array (value = REF(BYTE-ARRAY))
-# - typed arrays (identified by type)
-- 14: int8 array (value = REF(TYPED-ARRAY(int8)))
-- 15: uint8 array (value = REF(TYPED-ARRAY(uint8)))
-- 16: int16 array (value = REF(TYPED-ARRAY(int16)))
-- 17: uint16 array (value = REF(TYPED-ARRAY(uint16)))
-- 18: int32 array (value = REF(TYPED-ARRAY(int32)))
-- 19: uint32 array (value = REF(TYPED-ARRAY(uint32)))
-- 20: int64 array (value = REF(TYPED-ARRAY(int64)))
-- 21: uint64 array (value = REF(TYPED-ARRAY(uint64)))
-- 22: float32 array (value = REF(TYPED-ARRAY(float32)))
-- 23: float64 array (value = REF(TYPED-ARRAY(float64)))
-- 24-127: reserved # likely to be used for standardizing frequently used common formats to remove the need to incur the length overhead of putting them into generic typed arrays
+- 14: vector (value = REF(VECTOR))
+- 15: vector array (value = REF(VECTOR-ARRAY))
+- 16-127: reserved # likely to be used for standardizing frequently used common formats to remove the need to incur the length overhead of putting them into generic typed arrays
 - 128-255: application-specific
+
+SUBTYPE = uint8 # first 4 bits and 0-9 only, the remaining values are reserved
+- 0: i8
+- 1: u8
+- 2: i16
+- 3: u16
+- 4: i32
+- 5: u32
+- 6: i64
+- 7: u64
+- 8: f32
+- 9: f64
 ```
 
 ## What was considered and rejected for the format?
@@ -226,13 +249,13 @@ TYPE = uint8
 	- This removes the possibility of inlining smaller values effectively
 		- For example, currently storing any 32-bit value requires 1 byte for type and 4 bytes for the value.
 		- By storing the type with the value, it would be needed to store 4 bytes for the reference + the 1+4 bytes listed above.
-		- As a result, it would be necessary to consider smaller types for smaller values, which would then increase the number of integer casting implementations needed.
+		- As a result, it would be necessary to consider smaller types for smaller values, which would then increase the number of number casting implementations needed.
 - **Using 64-bit values and references**:
 	- Most use cases do not require these and would therefore increase the size of the file for most uses for the benefit of few uses (that are unlikely to need this format anyway).
 	- That said, it would also remove some complexity around integer casting which is why it was considered in the first place.
 	- This may be revisited in the future if it's found to be beneficial.
 - **More (elaborate) options for variable-length size encoding**:
-	- Since in some parser implementations the size of arrays, objects, and their keys may be retrieved from the file many times, it was important that this was still fast enough to do. Variable length integers reduce performance by creating dependencies between each parsing step, which requires the CPU to see the results of each operation before it can do the next thing. Even the U8+U32 encoding was found to make parsing slower by about 15% compared to the other options.
+	- Since in some parser implementations the size of arrays, objects, and their keys may be retrieved from the file many times, it was important that this was still fast enough to do. Variable length integers reduce performance by creating dependencies between each parsing step, which requires the CPU to see the results of each operation before it can do the next thing. Even the U8+U32 encoding in some cases was found to make parsing slower by about 15% compared to the other options.
 - **Multiple (or flagged) object/array/etc. types for different length encodings**:
 	- The idea was that e.g. one array type had an uint8 length value and another one had uint32.
 	- This would make a parser more difficult to test by creating more code paths that would be rarely used (which would make them prone to breaking at the exact point when they become useful).
@@ -245,3 +268,8 @@ TYPE = uint8
 	- Having reviewed a number of custom-made formats, it was clear that different teams have different preferences and risk tolerances - for example:
 		- Some prefer to use string keys and others are consistently preferring hashes.
 		- Some are fine to set project-wide limitations in the name of performance while others like to keep their options open.
+- **Entry point at the end of the file** ([FlexBuffers](https://google.github.io/flatbuffers/flatbuffers_internals.html))
+	- The issue is that it's difficult to ensure that we have the entire file if we expect the end of the file (whatever it may be) to just make sense.
+- **Adaptive overall sizing of integer vectors defining generic objects/arrays** ([FlexBuffers](https://google.github.io/flatbuffers/flatbuffers_internals.html))
+	- [Requires branching to read the contents of the vector across many hot paths.](https://github.com/google/flatbuffers/blob/v23.1.21/include/flatbuffers/flexbuffers.h#L133)
+	- Would also require smaller integer types to take full advantage of this, however in most cases objects will contain 32 bit integers, floating point values or in some cases references which effectively negate any benefits from selectively reduced sizing by requiring everything else to be 32 bits wide as well.

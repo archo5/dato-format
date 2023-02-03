@@ -867,8 +867,8 @@ class BufferReader:
 				M = (L + R) // 2
 				keyM = self._get_key_at(objbasepos + M * 4, False)
 				if key_to_find == keyM:
-					vpos = objbasepos + objsize * 4 + i * 4
-					tpos = objbasepos + objsize * 8 + i
+					vpos = objbasepos + objsize * 4 + M * 4
+					tpos = objbasepos + objsize * 8 + M
 					return create_accessor(
 						self.data[tpos],
 						int.from_bytes(self.data[vpos : vpos + 4], "little")
