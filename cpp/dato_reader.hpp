@@ -41,15 +41,16 @@ static const u8 TYPE_U64 = 6;
 static const u8 TYPE_F64 = 7;
 // - generic containers
 static const u8 TYPE_Array = 8;
-static const u8 TYPE_Object = 9;
+static const u8 TYPE_StringMap = 9;
+static const u8 TYPE_IntMap = 10;
 // - raw arrays (identified by purpose)
 // (strings contain an extra 0-termination value not included in their size)
-static const u8 TYPE_String8 = 10; // ASCII/UTF-8 or other single-byte encoding
-static const u8 TYPE_String16 = 11; // likely to be UTF-16
-static const u8 TYPE_String32 = 12; // likely to be UTF-32
-static const u8 TYPE_ByteArray = 13;
-static const u8 TYPE_Vector = 14;
-static const u8 TYPE_VectorArray = 15;
+static const u8 TYPE_String8 = 11; // ASCII/UTF-8 or other single-byte encoding
+static const u8 TYPE_String16 = 12; // likely to be UTF-16
+static const u8 TYPE_String32 = 13; // likely to be UTF-32
+static const u8 TYPE_ByteArray = 14;
+static const u8 TYPE_Vector = 15;
+static const u8 TYPE_VectorArray = 16;
 
 static const u8 SUBTYPE_S8 = 0;
 static const u8 SUBTYPE_U8 = 1;
@@ -75,7 +76,6 @@ template <> struct SubtypeInfo<f32> { enum { Subtype = SUBTYPE_F32 }; };
 template <> struct SubtypeInfo<f64> { enum { Subtype = SUBTYPE_F64 }; };
 
 static const u8 FLAG_Aligned = 1 << 0;
-static const u8 FLAG_IntegerKeys = 1 << 1;
 static const u8 FLAG_SortedKeys = 1 << 2;
 static const u8 FLAG_BigEndian = 1 << 3;
 static const u8 FLAG_RelativeObjectRefs = 1 << 4;
@@ -312,58 +312,20 @@ private:
 
 public:
 	struct DynamicAccessor;
-	struct ObjectAccessor
+	struct MapAccessor
 	{
-		struct Iterator
-		{
-			const ObjectAccessor* _obj;
-			u32 _i;
-
-			DATO_FORCEINLINE const Iterator& operator * () const { return *this; }
-			DATO_FORCEINLINE bool operator != (const Iterator& o) const { return _i != o._i; }
-			DATO_FORCEINLINE void operator ++ () { ++_i; }
-
-			DATO_FORCEINLINE u32 GetKeyInt() const { return _obj->GetKeyInt(_i); }
-			DATO_FORCEINLINE const char* GetKeyCStr() const { return _obj->GetKeyCStr(_i); }
-
-			DATO_FORCEINLINE DynamicAccessor GetValue() const { return _obj->GetValueByIndex(_i); }
-		};
-
 		BufferReader* _r;
 		u32 _pos;
 		u32 _size;
 		u32 _objpos;
 
-		ObjectAccessor(BufferReader* r, u32 pos) : _r(r), _pos(pos)
+		MapAccessor(BufferReader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_objpos = pos;
 			_size = r->_cfg.ReadObjectSize(r->_data, _objpos);
 		}
 
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
-
-		Iterator begin() const { return { this, 0 }; }
-		Iterator end() const { return { this, _size }; }
-
-		DATO_FORCEINLINE Iterator operator [](size_t i) const
-		{
-			assert(i < _size);
-			return { this, i };
-		}
-
-		// retrieving keys
-		u32 GetKeyInt(size_t i) const
-		{
-			assert(i < _size);
-			return _r->RD<u32>(_objpos + i * 4);
-		}
-		const char* GetKeyCStr(size_t i) const
-		{
-			assert(i < _size);
-			u32 kpos = _r->RD<u32>(_objpos + i * 4);
-			_r->_cfg.ReadKeyLength(_r->_data, kpos);
-			return &_r->_data[kpos];
-		}
 
 		// retrieving values
 		DynamicAccessor TryGetValueByIndex(size_t i) const
@@ -383,20 +345,68 @@ public:
 				val = _objpos - val;
 			return { _r, val, type };
 		}
+	};
+	struct StringMapAccessor : MapAccessor
+	{
+		struct Iterator
+		{
+			const StringMapAccessor* _obj;
+			u32 _i;
+
+			DATO_FORCEINLINE const Iterator& operator * () const { return *this; }
+			DATO_FORCEINLINE bool operator != (const Iterator& o) const { return _i != o._i; }
+			DATO_FORCEINLINE void operator ++ () { ++_i; }
+
+			DATO_FORCEINLINE const char* GetKeyCStr(u32* pOutLen = nullptr) const
+			{ return _obj->GetKeyCStr(_i, pOutLen); }
+			DATO_FORCEINLINE u32 GetKeyLength() const { return _obj->GetKeyLength(_i); }
+
+			DATO_FORCEINLINE DynamicAccessor GetValue() const { return _obj->GetValueByIndex(_i); }
+		};
+
+		using MapAccessor::MapAccessor;
+
+		Iterator begin() const { return { this, 0 }; }
+		Iterator end() const { return { this, this->_size }; }
+
+		DATO_FORCEINLINE Iterator operator [](size_t i) const
+		{
+			assert(i < this->_size);
+			return { this, i };
+		}
+
+		// retrieving keys
+		const char* GetKeyCStr(size_t i, u32* pOutLen = nullptr) const
+		{
+			auto* BR = this->_r;
+			assert(i < this->_size);
+			u32 kpos = BR->template RD<u32>(this->_objpos + i * 4);
+			u32 L = BR->_cfg.ReadKeyLength(BR->_data, kpos);
+			if (pOutLen)
+				*pOutLen = L;
+			return &BR->_data[kpos];
+		}
+		DATO_FORCEINLINE u32 GetKeyLength(size_t i) const
+		{
+			u32 ret;
+			GetKeyCStr(i, &ret);
+			return ret;
+		}
 
 		// searching for values
-		DynamicAccessor FindValueByStringKey(const char* keyToFind) const
+		DynamicAccessor FindValueByKey(const char* keyToFind) const
 		{
-			if (_r->_flags & FLAG_SortedKeys)
+			auto* BR = this->_r;
+			if (BR->_flags & FLAG_SortedKeys)
 			{
-				u32 L = 0, R = _size;
+				u32 L = 0, R = this->_size;
 				while (L < R)
 				{
 					u32 M = (L + R) / 2;
-					u32 keyM = _r->RD<u32>(_objpos + M * 4);
-					int diff = _r->KeyCompare(keyM, keyToFind);
+					u32 keyM = BR->template RD<u32>(this->_objpos + M * 4);
+					int diff = BR->KeyCompare(keyM, keyToFind);
 					if (diff == 0)
-						return GetValueByIndex(M);
+						return this->GetValueByIndex(M);
 					if (diff < 0)
 						R = M;
 					else
@@ -405,27 +415,28 @@ public:
 			}
 			else
 			{
-				for (u32 i = 0; i < _size; i++)
+				for (u32 i = 0; i < this->_size; i++)
 				{
-					u32 key = _r->RD<u32>(_objpos + i * 4);
-					if (_r->KeyEquals(key, keyToFind))
-						return GetValueByIndex(i);
+					u32 key = BR->template RD<u32>(this->_objpos + i * 4);
+					if (BR->KeyEquals(key, keyToFind))
+						return this->GetValueByIndex(i);
 				}
 			}
 			return {};
 		}
-		DynamicAccessor FindValueByStringKey(const void* keyToFind, size_t lenKeyToFind) const
+		DynamicAccessor FindValueByKey(const void* keyToFind, size_t lenKeyToFind) const
 		{
-			if (_r->_flags & FLAG_SortedKeys)
+			auto* BR = this->_r;
+			if (BR->_flags & FLAG_SortedKeys)
 			{
-				u32 L = 0, R = _size;
+				u32 L = 0, R = this->_size;
 				while (L < R)
 				{
 					u32 M = (L + R) / 2;
-					u32 keyM = _r->RD<u32>(_objpos + M * 4);
-					int diff = _r->KeyCompare(keyM, keyToFind, lenKeyToFind);
+					u32 keyM = BR->template RD<u32>(this->_objpos + M * 4);
+					int diff = BR->KeyCompare(keyM, keyToFind, lenKeyToFind);
 					if (diff == 0)
-						return GetValueByIndex(M);
+						return this->GetValueByIndex(M);
 					if (diff < 0)
 						R = M;
 					else
@@ -434,16 +445,51 @@ public:
 			}
 			else
 			{
-				for (u32 i = 0; i < _size; i++)
+				for (u32 i = 0; i < this->_size; i++)
 				{
-					u32 key = _r->RD<u32>(_objpos + i * 4);
-					if (_r->KeyEquals(key, keyToFind, lenKeyToFind))
-						return GetValueByIndex(i);
+					u32 key = BR->template RD<u32>(this->_objpos + i * 4);
+					if (BR->KeyEquals(key, keyToFind, lenKeyToFind))
+						return this->GetValueByIndex(i);
 				}
 			}
 			return {};
 		}
-		DynamicAccessor FindValueByIntKey(u32 keyToFind) const
+	};
+	struct IntMapAccessor : MapAccessor
+	{
+		struct Iterator
+		{
+			const IntMapAccessor* _obj;
+			u32 _i;
+
+			DATO_FORCEINLINE const Iterator& operator * () const { return *this; }
+			DATO_FORCEINLINE bool operator != (const Iterator& o) const { return _i != o._i; }
+			DATO_FORCEINLINE void operator ++ () { ++_i; }
+
+			DATO_FORCEINLINE u32 GetKey() const { return _obj->GetKey(_i); }
+			DATO_FORCEINLINE DynamicAccessor GetValue() const { return _obj->GetValueByIndex(_i); }
+		};
+
+		using MapAccessor::MapAccessor;
+
+		Iterator begin() const { return { this, 0 }; }
+		Iterator end() const { return { this, _size }; }
+
+		DATO_FORCEINLINE Iterator operator [](size_t i) const
+		{
+			assert(i < _size);
+			return { this, i };
+		}
+
+		// retrieving keys
+		u32 GetKey(size_t i) const
+		{
+			assert(i < _size);
+			return _r->RD<u32>(_objpos + i * 4);
+		}
+
+		// searching for values
+		DynamicAccessor FindValueByKey(u32 keyToFind) const
 		{
 			if (_r->_flags & FLAG_SortedKeys)
 			{
@@ -674,9 +720,14 @@ public:
 		DATO_FORCEINLINE u64 AsU64() const { assert(_type == TYPE_U64); return _r->RD<u64>(_pos); }
 		DATO_FORCEINLINE double AsF64() const { assert(_type == TYPE_F64); return _r->RD<double>(_pos); }
 
-		DATO_FORCEINLINE ObjectAccessor AsObject() const
+		DATO_FORCEINLINE StringMapAccessor AsStringMap() const
 		{
-			assert(_type == TYPE_Object);
+			assert(_type == TYPE_StringMap);
+			return { _r, _pos };
+		}
+		DATO_FORCEINLINE IntMapAccessor AsIntMap() const
+		{
+			assert(_type == TYPE_IntMap);
 			return { _r, _pos };
 		}
 		DATO_FORCEINLINE ArrayAccessor AsArray() const

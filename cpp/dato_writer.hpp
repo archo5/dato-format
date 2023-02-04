@@ -45,15 +45,16 @@ static const u8 TYPE_U64 = 6;
 static const u8 TYPE_F64 = 7;
 // - generic containers
 static const u8 TYPE_Array = 8;
-static const u8 TYPE_Object = 9;
+static const u8 TYPE_StringMap = 9;
+static const u8 TYPE_IntMap = 10;
 // - raw arrays (identified by purpose)
 // (strings contain an extra 0-termination value not included in their size)
-static const u8 TYPE_String8 = 10; // ASCII/UTF-8 or other single-byte encoding
-static const u8 TYPE_String16 = 11; // likely to be UTF-16
-static const u8 TYPE_String32 = 12; // likely to be UTF-32
-static const u8 TYPE_ByteArray = 13;
-static const u8 TYPE_Vector = 14;
-static const u8 TYPE_VectorArray = 15;
+static const u8 TYPE_String8 = 11; // ASCII/UTF-8 or other single-byte encoding
+static const u8 TYPE_String16 = 12; // likely to be UTF-16
+static const u8 TYPE_String32 = 13; // likely to be UTF-32
+static const u8 TYPE_ByteArray = 14;
+static const u8 TYPE_Vector = 15;
+static const u8 TYPE_VectorArray = 16;
 
 static const u8 SUBTYPE_S8 = 0;
 static const u8 SUBTYPE_U8 = 1;
@@ -79,7 +80,6 @@ template <> struct SubtypeInfo<f32> { enum { Subtype = SUBTYPE_F32 }; };
 template <> struct SubtypeInfo<f64> { enum { Subtype = SUBTYPE_F64 }; };
 
 static const u8 FLAG_Aligned = 1 << 0;
-static const u8 FLAG_IntegerKeys = 1 << 1;
 static const u8 FLAG_SortedKeys = 1 << 2;
 static const u8 FLAG_BigEndian = 1 << 3;
 static const u8 FLAG_RelativeObjectRefs = 1 << 4;
@@ -282,7 +282,7 @@ struct WriterConfig0
 
 	static u32 WriteKeyLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
-	static u32 WriteObjectSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
+	static u32 WriteMapSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
 	static u32 WriteArrayLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
@@ -296,7 +296,7 @@ struct WriterConfig1
 
 	static u32 WriteKeyLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
-	static u32 WriteObjectSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
+	static u32 WriteMapSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
 	static u32 WriteArrayLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
@@ -310,7 +310,7 @@ struct WriterConfig2
 
 	static u32 WriteKeyLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
-	static u32 WriteObjectSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
+	static u32 WriteMapSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
 	static u32 WriteArrayLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
@@ -324,7 +324,7 @@ struct WriterConfig3
 
 	static u32 WriteKeyLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8(B, val, align, prefix, pfxsize); }
-	static u32 WriteObjectSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
+	static u32 WriteMapSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8(B, val, align, prefix, pfxsize); }
 	static u32 WriteArrayLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
@@ -338,7 +338,7 @@ struct WriterConfig4
 
 	static u32 WriteKeyLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8(B, val, align, prefix, pfxsize); }
-	static u32 WriteObjectSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
+	static u32 WriteMapSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8(B, val, align, prefix, pfxsize); }
 	static u32 WriteArrayLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
@@ -359,7 +359,13 @@ struct ValueRef
 	u32 pos;
 };
 
-struct EntryRef
+struct IntMapEntry
+{
+	u32 key;
+	ValueRef value;
+};
+
+struct StringMapEntry
 {
 	KeyRef key;
 	ValueRef value;
@@ -406,6 +412,8 @@ struct MemReuseHashTable
 
 	Entry* Find(const void* mem, u32 len) const
 	{
+		if (!_numEntries)
+			return nullptr;
 		char* data = *_pdata;
 		u32 hash = MemHash(mem, len);
 		u32 ipos = hash % _numTableSlots;
@@ -583,29 +591,34 @@ struct WriterBase : Builder
 	}
 };
 
-template <class T>
 struct TempMem
 {
-	T* data = nullptr;
+	void* data = nullptr;
 	u32 size = 0;
 
 	~TempMem()
 	{
 		free(data);
 	}
-	T* GetData(u32 atLeast)
+	void* GetDataBytes(u32 atLeast)
 	{
 		if (size < atLeast)
 		{
 			size += atLeast;
 			free(data);
-			data = (T*) malloc(sizeof(T) * size);
+			data = malloc(size);
 		}
 		return data;
 	}
-	T* CopyData(const T* from, u32 count)
+	template <class T>
+	DATO_FORCEINLINE T* GetData(u32 atLeast)
 	{
-		T* data = GetData(count);
+		return (T*) GetDataBytes(atLeast * sizeof(T));
+	}
+	template <class T>
+	DATO_FORCEINLINE T* CopyData(const T* from, u32 count)
+	{
+		T* data = GetData<T>(count);
 		memcpy(data, from, sizeof(T) * count);
 		return data;
 	}
@@ -619,14 +632,14 @@ template <class T> DATO_FORCEINLINE void PODSwap(T& a, T& b)
 	b = tmp;
 }
 
-inline void SortEntriesByKeyInt(TempMem<EntryRef>& tempMem, EntryRef* entries, u32 count)
+inline void SortEntriesByKeyInt(TempMem& tempMem, IntMapEntry* entries, u32 count)
 {
 	if (count <= 16)
 	{
 		// insertion sort
 		for (u32 i = 1; i < count; i++)
 		{
-			for (u32 j = i; j > 0 && entries[j - 1].key.pos > entries[j].key.pos; j--)
+			for (u32 j = i; j > 0 && entries[j - 1].key > entries[j].key; j--)
 			{
 				PODSwap(entries[j - 1], entries[j]);
 			}
@@ -635,8 +648,8 @@ inline void SortEntriesByKeyInt(TempMem<EntryRef>& tempMem, EntryRef* entries, u
 	}
 
 	// radix sort
-	EntryRef* from = entries;
-	EntryRef* to = tempMem.GetData(count);
+	IntMapEntry* from = entries;
+	IntMapEntry* to = tempMem.GetData<IntMapEntry>(count);
 	for (int part = 0; part < 4; part++)
 	{
 		u32 shift = part * 8;
@@ -644,7 +657,7 @@ inline void SortEntriesByKeyInt(TempMem<EntryRef>& tempMem, EntryRef* entries, u
 		// count the number of elements in each bucket
 		u32 numElements[256] = {};
 		for (u32 i = 0; i < count; i++)
-			numElements[(from[i].key.pos >> shift) & 0xff]++;
+			numElements[(from[i].key >> shift) & 0xff]++;
 
 		// allocate ranges for each bucket
 		u32 offsets[256];
@@ -657,13 +670,13 @@ inline void SortEntriesByKeyInt(TempMem<EntryRef>& tempMem, EntryRef* entries, u
 
 		// copy elements according to their assigned offsets
 		for (u32 i = 0; i < count; i++)
-			to[offsets[(from[i].key.pos >> shift) & 0xff]++] = from[i];
+			to[offsets[(from[i].key >> shift) & 0xff]++] = from[i];
 
 		PODSwap(from, to);
 	}
 }
 
-inline int Q3SS_CharAt(const char* mem, const EntryRef& e, u32 at)
+inline int Q3SS_CharAt(const char* mem, const StringMapEntry& e, u32 at)
 {
 	if (at < e.key.dataLen)
 		return u8(mem[e.key.dataPos + at]);
@@ -671,7 +684,7 @@ inline int Q3SS_CharAt(const char* mem, const EntryRef& e, u32 at)
 }
 
 // three-way string quicksort
-inline void Quick3StringSort(const char* mem, EntryRef* entries, int low, int high, u32 which)
+inline void Quick3StringSort(const char* mem, StringMapEntry* entries, int low, int high, u32 which)
 {
 	if (high <= low)
 		return;
@@ -695,7 +708,7 @@ inline void Quick3StringSort(const char* mem, EntryRef* entries, int low, int hi
 	Quick3StringSort(mem, entries, subhigh + 1, high, which);
 }
 
-inline void SortEntriesByKeyString(const char* mem, EntryRef* entries, u32 count)
+inline void SortEntriesByKeyString(const char* mem, StringMapEntry* entries, u32 count)
 {
 	Quick3StringSort(mem, entries, 0, int(count - 1), 0);
 }
@@ -704,8 +717,8 @@ inline void SortEntriesByKeyString(const char* mem, EntryRef* entries, u32 count
 template <class Config>
 struct Writer : WriterBase
 {
-	TempMem<EntryRef> _sortableEntries;
-	TempMem<EntryRef> _sortCopyEntries;
+	TempMem _sortableEntries;
+	TempMem _sortCopyEntries;
 	bool _skipDuplicateKeys;
 
 	DATO_FORCEINLINE Writer
@@ -724,7 +737,7 @@ struct Writer : WriterBase
 		if (_skipDuplicateKeys)
 		{
 			if (auto* e = _keyTable.Find(str, size))
-				return { e->valuePos, e->dataPos, e->len };
+				return { e->valuePos, e->dataOff, e->len };
 		}
 
 		u32 pos = Config::WriteKeyLength(*this, size, 0, nullptr, 0);
@@ -741,76 +754,110 @@ struct Writer : WriterBase
 	}
 	DATO_FORCEINLINE KeyRef WriteStringKey(const char* str) { return WriteStringKey(str, StrLen(str)); }
 
-	ValueRef WriteObject(const EntryRef* entries, u32 count)
+	ValueRef WriteStringMap(const StringMapEntry* entries, u32 count)
 	{
 		if (_flags & FLAG_SortedKeys)
 		{
-			EntryRef* sea = _sortableEntries.CopyData(entries, count);
-			_SortObjectEntries(sea, count);
+			StringMapEntry* sea = _sortableEntries.CopyData(entries, count);
+			_SortStringMapEntries(sea, count);
 			entries = sea;
 		}
-		return _WriteObjectImpl(entries, count);
+		return _WriteStringMapImpl(entries, count);
 	}
 
-	ValueRef WriteObjectInlineSort(EntryRef* entries, u32 count)
+	ValueRef WriteStringMapInlineSort(StringMapEntry* entries, u32 count)
 	{
 		if (_flags & FLAG_SortedKeys)
 		{
-			_SortObjectEntries(entries, count);
+			_SortStringMapEntries(entries, count);
 		}
-		return _WriteObjectImpl(entries, count);
+		return _WriteStringMapImpl(entries, count);
 	}
 
-	void _SortObjectEntries(EntryRef* entries, u32 count)
+	void _SortStringMapEntries(StringMapEntry* entries, u32 count)
 	{
-		if (_flags & FLAG_IntegerKeys)
-		{
 #ifdef DATO_USE_STD_SORT
-			std::sort(
-				entries,
-				entries + count,
-				[](const EntryRef& a, const EntryRef& b)
-			{
-				return a.key.pos < b.key.pos;
-			});
-#else
-			SortEntriesByKeyInt(_sortCopyEntries, entries, count);
-#endif
-		}
-		else
+		std::sort(
+			entries,
+			entries + count,
+			[this](const StringMapEntry& a, const StringMapEntry& b)
 		{
-#ifdef DATO_USE_STD_SORT
-			std::sort(
-				entries,
-				entries + count,
-				[this](const EntryRef& a, const EntryRef& b)
-			{
-				u32 minSize = a.key.dataLen < b.key.dataLen ? a.key.dataLen : b.key.dataLen;
-				const char* ka = _data + a.key.dataPos;
-				const char* kb = _data + b.key.dataPos;
-				if (int diff = memcmp(ka, kb, minSize))
-					return diff < 0;
-				return a.key.dataLen < b.key.dataLen;
-			});
+			u32 minSize = a.key.dataLen < b.key.dataLen ? a.key.dataLen : b.key.dataLen;
+			const char* ka = _data + a.key.dataPos;
+			const char* kb = _data + b.key.dataPos;
+			if (int diff = memcmp(ka, kb, minSize))
+				return diff < 0;
+			return a.key.dataLen < b.key.dataLen;
+		});
 #else
-			SortEntriesByKeyString(_data, entries, count);
+		SortEntriesByKeyString(_data, entries, count);
 #endif
-		}
 	}
 
-	ValueRef _WriteObjectImpl(const EntryRef* entries, u32 count)
+	ValueRef _WriteStringMapImpl(const StringMapEntry* entries, u32 count)
 	{
-		u32 pos = Config::WriteObjectSize(*this, count, Align(4), nullptr, 0);
-		u32 objpos = GetSize();
+		u32 pos = Config::WriteMapSize(*this, count, Align(4), nullptr, 0);
+		u32 basepos = GetSize();
 		for (u32 i = 0; i < count; i++)
 			AddU32(entries[i].key.pos);
+		_WriteMapValuesAndTypes(entries, count, basepos);
+		return { TYPE_StringMap, pos };
+	}
+
+	ValueRef WriteIntMap(const IntMapEntry* entries, u32 count)
+	{
+		if (_flags & FLAG_SortedKeys)
+		{
+			IntMapEntry* sea = _sortableEntries.CopyData(entries, count);
+			_SortIntMapEntries(sea, count);
+			entries = sea;
+		}
+		return _WriteIntMapImpl(entries, count);
+	}
+
+	ValueRef WriteIntMapInlineSort(IntMapEntry* entries, u32 count)
+	{
+		if (_flags & FLAG_SortedKeys)
+		{
+			_SortIntMapEntries(entries, count);
+		}
+		return _WriteIntMapImpl(entries, count);
+	}
+
+	void _SortIntMapEntries(IntMapEntry* entries, u32 count)
+	{
+#ifdef DATO_USE_STD_SORT
+		std::sort(
+			entries,
+			entries + count,
+			[](const IntMapEntry& a, const IntMapEntry& b)
+		{
+			return a.key.pos < b.key.pos;
+		});
+#else
+		SortEntriesByKeyInt(_sortCopyEntries, entries, count);
+#endif
+	}
+
+	ValueRef _WriteIntMapImpl(const IntMapEntry* entries, u32 count)
+	{
+		u32 pos = Config::WriteMapSize(*this, count, Align(4), nullptr, 0);
+		u32 basepos = GetSize();
+		for (u32 i = 0; i < count; i++)
+			AddU32(entries[i].key);
+		_WriteMapValuesAndTypes(entries, count, basepos);
+		return { TYPE_IntMap, pos };
+	}
+
+	template <class EntryT> void _WriteMapValuesAndTypes(const EntryT* entries, u32 count, u32 basepos)
+	{
 		if (_flags & FLAG_RelativeObjectRefs)
 		{
 			for (u32 i = 0; i < count; i++)
 			{
 				u32 vp = entries[i].value.pos;
 				if (IsReferenceType(entries[i].value.type))
-					vp -= objpos;
+					vp -= basepos;
 				AddU32(vp);
 			}
 		}
@@ -821,20 +868,19 @@ struct Writer : WriterBase
 		}
 		for (u32 i = 0; i < count; i++)
 			AddByte(entries[i].value.type);
-		return { TYPE_Object, pos };
 	}
 
 	ValueRef WriteArray(const ValueRef* values, u32 count)
 	{
 		u32 pos = Config::WriteArrayLength(*this, count, Align(4), nullptr, 0);
-		u32 objpos = GetSize();
+		u32 basepos = GetSize();
 		if (_flags & FLAG_RelativeObjectRefs)
 		{
 			for (u32 i = 0; i < count; i++)
 			{
 				u32 vp = values[i].pos;
 				if (IsReferenceType(values[i].type))
-					vp -= objpos;
+					vp -= basepos;
 				AddU32(vp);
 			}
 		}

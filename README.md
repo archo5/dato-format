@@ -101,12 +101,10 @@ SIZE-ENC-CONFIG-BYTE = [0;4] | [128;255]
 # - 5-127 are reserved
 # - 128-255 can be used for specifying application-specific configurations
 
-PROPERTY-BYTE = [0 1 2 3 4 R R R]
+PROPERTY-BYTE = [0 R 2 3 4 R R R]
 # values are flags:
 # - bit 0 specifies whether the file is aligned (1 = yes)
 #	- alignment applies to every element larger than one byte - they are expected to be placed at an offset that is a multiple of its size, e.g. uint32 could be placed at offset 24 (4*6) or 52 (4*13) but not 37
-# - bit 1 specifies whether integer keys are used (1 = yes)
-#	- integer keys do not point to a KEY-STRING reference but instead are themselves identifiers
 # - bit 2 specifies whether the keys are sorted (1 = yes)
 #	- integer keys are expected to be sorted by value (uint32), string keys by content (comparing byte values)
 # - bit 3 specifies whether the file is big endian (1 = big endian, 0 = little endian)
@@ -115,7 +113,7 @@ PROPERTY-BYTE = [0 1 2 3 4 R R R]
 #	- (1 = relative to object position after alignment and length, 0 = absolute)
 #	- this makes serialization and parsing slightly slower and more complicated ..
 #	.. but significantly improves the compressibility of the data
-# - bits 5-7 are reserved
+# - bits 1,5-7 are reserved
 
 ALIGN(...) = [empty] ... 0[N]
 # if alignment is enabled, this contains 0 or more zero-bytes, to align the in-file position of each subsequent value contained in the structure to its natural (or explicitly specified) alignment
@@ -178,6 +176,8 @@ SIZE(T) = [depends on encoding]
 }
 
 KEY = uint32 | REF(KEY-STRING)
+# - uint32 is used for IntMap
+# - REF(KEY-STRING) is used for StringMap
 
 KEY-STRING =
 {
@@ -207,7 +207,7 @@ VECTOR-ARRAY(T) =
 	values = T[vecsize * count]
 }
 
-VALUE = int32 | uint32 | float32 | VREF(int64 | uint64 | float64 | ARRAY | OBJECT | TYPED-ARRAY | VECTOR | VECTOR-ARRAY)
+VALUE = int32 | uint32 | float32 | VREF(int64 | uint64 | float64 | ARRAY | MAP | TYPED-ARRAY | VECTOR | VECTOR-ARRAY)
 
 TYPE = uint8
 - 0: null (value = 0)
@@ -223,7 +223,8 @@ TYPE = uint8
 - 7: float64 (value = VREF(float64(input)))
 # - generic containers:
 - 8: array (value = VREF(ARRAY))
-- 9: object (value = VREF(OBJECT))
+- 9: string map (value = VREF(MAP))
+- 10: int map (value = VREF(MAP))
 # - raw arrays (identified by purpose)
 # (strings contain an extra 0-termination value not included in their size)
 - 10: string, 8-bit characters (value = VREF(STRING-8))
