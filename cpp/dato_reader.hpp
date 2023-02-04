@@ -45,9 +45,9 @@ static const u8 TYPE_StringMap = 9;
 static const u8 TYPE_IntMap = 10;
 // - raw arrays (identified by purpose)
 // (strings contain an extra 0-termination value not included in their size)
-static const u8 TYPE_String8 = 11; // ASCII/UTF-8 or other single-byte encoding
-static const u8 TYPE_String16 = 12; // likely to be UTF-16
-static const u8 TYPE_String32 = 13; // likely to be UTF-32
+static const u8 TYPE_String8 = 11; // ASCII/UTF-8
+static const u8 TYPE_String16 = 12; // UTF-16
+static const u8 TYPE_String32 = 13; // UTF-32
 static const u8 TYPE_ByteArray = 14;
 static const u8 TYPE_Vector = 15;
 static const u8 TYPE_VectorArray = 16;
@@ -76,9 +76,8 @@ template <> struct SubtypeInfo<f32> { enum { Subtype = SUBTYPE_F32 }; };
 template <> struct SubtypeInfo<f64> { enum { Subtype = SUBTYPE_F64 }; };
 
 static const u8 FLAG_Aligned = 1 << 0;
-static const u8 FLAG_SortedKeys = 1 << 2;
-static const u8 FLAG_BigEndian = 1 << 3;
-static const u8 FLAG_RelativeObjectRefs = 1 << 4;
+static const u8 FLAG_SortedKeys = 1 << 1;
+static const u8 FLAG_RelContValRefs = 1 << 2; // relative container value references
 
 // override this if you're adding inline types
 #ifndef DATO_IS_REFERENCE_TYPE
@@ -341,7 +340,7 @@ public:
 			u32 tpos = _objpos + _size * 8 + i;
 			u32 val = _r->RD<u32>(vpos);
 			u8 type = _r->RD<u8>(tpos);
-			if (_r->_flags & FLAG_RelativeObjectRefs && IsReferenceType(type))
+			if (_r->_flags & FLAG_RelContValRefs && IsReferenceType(type))
 				val = _objpos - val;
 			return { _r, val, type };
 		}
@@ -562,7 +561,7 @@ public:
 			u32 tpos = _arrpos + _size * 8 + i;
 			u32 val = _r->RD<u32>(vpos);
 			u8 type = _r->RD<u8>(tpos);
-			if (_r->_flags & FLAG_RelativeObjectRefs && IsReferenceType(type))
+			if (_r->_flags & FLAG_RelContValRefs && IsReferenceType(type))
 				val = _arrpos - val;
 			return { _r, val, type };
 		}

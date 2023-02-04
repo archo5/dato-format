@@ -83,6 +83,14 @@ Additional options:
 ## The file format specification (**warning: not finalized at this point - minor details may change**)
 
 ```py
+# It is encouraged to "bend" the format for your needs, however the following properties are normally expected:
+# - Endianness: little endian
+# - KEY-STRING content encoding: ASCII/UTF-8/raw bytes, sorted as raw bytes
+# - String8 content encoding: ASCII/UTF-8
+# - String16 content encoding: UTF-16
+# - String32 content encoding: UTF-32
+# - String* content encoding notes: no BOM, little-endian where applicable
+
 FILE =
 {
 	PREFIX-BYTES
@@ -101,19 +109,19 @@ SIZE-ENC-CONFIG-BYTE = [0;4] | [128;255]
 # - 5-127 are reserved
 # - 128-255 can be used for specifying application-specific configurations
 
-PROPERTY-BYTE = [0 R 2 3 4 R R R]
+PROPERTY-BYTE = [0 1 2 R R R R R]
 # values are flags:
 # - bit 0 specifies whether the file is aligned (1 = yes)
-#	- alignment applies to every element larger than one byte - they are expected to be placed at an offset that is a multiple of its size, e.g. uint32 could be placed at offset 24 (4*6) or 52 (4*13) but not 37
-# - bit 2 specifies whether the keys are sorted (1 = yes)
+#	- alignment applies to every element larger than one byte - they are expected ..
+#	.. to be placed at an offset that is a multiple of its size, e.g. ..
+#	.. uint32 could be placed at offset 24 (4*6) or 52 (4*13) but not 37
+# - bit 1 specifies whether the keys are sorted (1 = yes)
 #	- integer keys are expected to be sorted by value (uint32), string keys by content (comparing byte values)
-# - bit 3 specifies whether the file is big endian (1 = big endian, 0 = little endian)
-#	- encoders and decoders are only expected to support platform-native endianness (usually little)!
-# - bit 4 specifies whether object references are saved absolute or relative to object starting position
-#	- (1 = relative to object position after alignment and length, 0 = absolute)
+# - bit 2 specifies whether array/map references are saved absolute or relative to starting position
+#	- (1 = relative to position after alignment and length, 0 = absolute)
 #	- this makes serialization and parsing slightly slower and more complicated ..
 #	.. but significantly improves the compressibility of the data
-# - bits 1,5-7 are reserved
+# - bits 3-7 are reserved
 
 ALIGN(...) = [empty] ... 0[N]
 # if alignment is enabled, this contains 0 or more zero-bytes, to align the in-file position of each subsequent value contained in the structure to its natural (or explicitly specified) alignment
@@ -124,18 +132,19 @@ REF(T) = uint32
 
 VREF(T) = uint32
 # -- if PROPERTY-BYTE [bitwise-and] bit-4 (relative refs) --
-# an offset backwards from the object's "origin" (aligned offset to data after size)
-# absolute offset = object's origin - VREF-value
+# an offset backwards from the array/map "origin" (aligned offset to data after size)
+# absolute offset = array/map origin - VREF-value
 # relative references to values tend to compress better since referenced values are typically nearby
 # in this spec, T optionally specifies the type that is expected to be at the end of the reference
 # -- otherwise --
 # same as REF(T)
 
-OBJECT =
+MAP =
 {
-	ALIGN(SIZE(OBJECT), 4) # for mixed-value sizes, the alignment must take into account all the values
+	ALIGN(SIZE(MAP), 4) # for mixed-value sizes, the alignment must take into account all the values
 	# <- start (where references point to)
-	size = SIZE(OBJECT) # the number of properties in the object
+	size = SIZE(MAP) # the number of properties in the object
+	# <- origin (for relative value refs)
 	keys = KEY[size] # no duplicates allowed!
 	values = VALUE[size]
 	types = TYPE[size]
@@ -146,6 +155,7 @@ ARRAY =
 	ALIGN(SIZE(ARRAY), 4) # for mixed-value sizes, the alignment must take into account all the values
 	# <- start (where references point to)
 	size = SIZE(ARRAY)
+	# <- origin (for relative value refs)
 	values = VALUE[size]
 	types = TYPE[size]
 }

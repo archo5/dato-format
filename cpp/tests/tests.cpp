@@ -92,7 +92,7 @@ struct ExpectationBuilder
 	CHECK_BUF_EQ(eb.bfr, eb.len, wr.GetData(), wr.GetSize()); \
 }
 
-#define EBCFG0PFX(t) "DATO", 0, 0x11, t, 0
+#define EBCFG0PFX(t) "DATO", 0, 0x7, t, 0
 
 void TestBasicStructures()
 {

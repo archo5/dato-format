@@ -49,9 +49,9 @@ static const u8 TYPE_StringMap = 9;
 static const u8 TYPE_IntMap = 10;
 // - raw arrays (identified by purpose)
 // (strings contain an extra 0-termination value not included in their size)
-static const u8 TYPE_String8 = 11; // ASCII/UTF-8 or other single-byte encoding
-static const u8 TYPE_String16 = 12; // likely to be UTF-16
-static const u8 TYPE_String32 = 13; // likely to be UTF-32
+static const u8 TYPE_String8 = 11; // ASCII/UTF-8
+static const u8 TYPE_String16 = 12; // UTF-16
+static const u8 TYPE_String32 = 13; // UTF-32
 static const u8 TYPE_ByteArray = 14;
 static const u8 TYPE_Vector = 15;
 static const u8 TYPE_VectorArray = 16;
@@ -80,9 +80,8 @@ template <> struct SubtypeInfo<f32> { enum { Subtype = SUBTYPE_F32 }; };
 template <> struct SubtypeInfo<f64> { enum { Subtype = SUBTYPE_F64 }; };
 
 static const u8 FLAG_Aligned = 1 << 0;
-static const u8 FLAG_SortedKeys = 1 << 2;
-static const u8 FLAG_BigEndian = 1 << 3;
-static const u8 FLAG_RelativeObjectRefs = 1 << 4;
+static const u8 FLAG_SortedKeys = 1 << 1;
+static const u8 FLAG_RelContValRefs = 1 << 2; // relative container value references
 
 // override this if you're adding inline types
 #ifndef DATO_IS_REFERENCE_TYPE
@@ -725,7 +724,7 @@ struct Writer : WriterBase
 	(
 		const char* prefix = "DATO",
 		u32 pfxsize = 4,
-		u8 flags = FLAG_Aligned | FLAG_RelativeObjectRefs,
+		u8 flags = FLAG_Aligned | FLAG_SortedKeys | FLAG_RelContValRefs,
 		bool skipDuplicateKeys = true
 	)
 		: WriterBase(prefix, pfxsize, Config::Identifier(), flags)
@@ -851,7 +850,7 @@ struct Writer : WriterBase
 
 	template <class EntryT> void _WriteMapValuesAndTypes(const EntryT* entries, u32 count, u32 basepos)
 	{
-		if (_flags & FLAG_RelativeObjectRefs)
+		if (_flags & FLAG_RelContValRefs)
 		{
 			for (u32 i = 0; i < count; i++)
 			{
@@ -874,7 +873,7 @@ struct Writer : WriterBase
 	{
 		u32 pos = Config::WriteArrayLength(*this, count, Align(4), nullptr, 0);
 		u32 basepos = GetSize();
-		if (_flags & FLAG_RelativeObjectRefs)
+		if (_flags & FLAG_RelContValRefs)
 		{
 			for (u32 i = 0; i < count; i++)
 			{
