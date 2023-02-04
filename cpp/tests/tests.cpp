@@ -1,9 +1,12 @@
 
 #include "../dato_reader.hpp"
+#include "../dato_writer.hpp"
 
 
 int main()
 {
+	dato::Writer<dato::WriterConfig0> wr;
+
 	dato::UniversalBufferReader r;
 	auto root = r.GetRoot();
 	root.FindValueByStringKey("what");

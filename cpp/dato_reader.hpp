@@ -14,6 +14,9 @@
 
 namespace dato {
 
+#ifndef DATO_COMMON_DEFS
+#define DATO_COMMON_DEFS
+
 typedef signed char s8;
 typedef unsigned char u8;
 typedef signed short s16;
@@ -24,22 +27,6 @@ typedef signed long long s64;
 typedef unsigned long long u64;
 typedef float f32;
 typedef double f64;
-
-#if DATO_FAST_UNSAFE_READER
-// only for use with aligned data or platforms that support unaligned loads (x86/x64/ARM64)
-// not guaranteed to work correctly if strict aliasing is enabled in compiler options!
-template <class T> DATO_FORCEINLINE static T ReadT(const void* ptr)
-{
-	return *(const T*)ptr;
-}
-#else
-template <class T> DATO_FORCEINLINE inline T ReadT(const void* ptr)
-{
-	T v;
-	memcpy(&v, ptr, sizeof(T));
-	return v;
-}
-#endif
 
 static const u8 TYPE_Null = 0;
 // embedded value types
@@ -75,7 +62,6 @@ static const u8 SUBTYPE_U64 = 7;
 static const u8 SUBTYPE_F32 = 8;
 static const u8 SUBTYPE_F64 = 9;
 
-
 template <class T> struct SubtypeInfo;
 template <> struct SubtypeInfo<s8> { enum { Subtype = SUBTYPE_S8 }; };
 template <> struct SubtypeInfo<u8> { enum { Subtype = SUBTYPE_U8 }; };
@@ -88,148 +74,198 @@ template <> struct SubtypeInfo<u64> { enum { Subtype = SUBTYPE_U64 }; };
 template <> struct SubtypeInfo<f32> { enum { Subtype = SUBTYPE_F32 }; };
 template <> struct SubtypeInfo<f64> { enum { Subtype = SUBTYPE_F64 }; };
 
+static const u8 FLAG_Aligned = 1 << 0;
+static const u8 FLAG_IntegerKeys = 1 << 1;
+static const u8 FLAG_SortedKeys = 1 << 2;
+static const u8 FLAG_BigEndian = 1 << 3;
+static const u8 FLAG_RelativeObjectRefs = 1 << 4;
 
-struct Buffer
+// override this if you're adding inline types
+#ifndef DATO_IS_REFERENCE_TYPE
+#define DATO_IS_REFERENCE_TYPE(t) ((t) >= TYPE_S64)
+#endif
+
+DATO_FORCEINLINE bool IsReferenceType(u8 t)
 {
-	u32 GetSize();
-	void AddZeroesUntil(u32 pos);
-	void AddByte(u8 byte);
-	void AddMem(const void* mem, u32 size);
-	void SetError_ValueOutOfRange();
-};
+	return DATO_IS_REFERENCE_TYPE(t);
+}
 
 inline u32 RoundUp(u32 x, u32 n)
 {
 	return (x + n - 1) / n * n;
 }
 
-struct EncodingU8
-{
-	static u32 Write(Buffer& B, u32 val, u32 align)
-	{
-		if (val < 0 || val > 255)
-		{
-			B.SetError_ValueOutOfRange();
-			return u32(-1);
-		}
-		u32 pos = B.GetSize();
-		if (align != 0)
-		{
-			pos = RoundUp(pos + 1, align) - 1;
-			B.AddZeroesUntil(pos);
-		}
-		B.AddByte(val);
-		return pos;
-	}
-	static u32 Parse(const char* data, u32& pos)
-	{
-		return u8(data[pos++]);
-	}
-};
+#endif // DATO_COMMON_DEFS
 
-struct EncodingU16
-{
-	static u32 Write(Buffer& B, u16 val, u32 align)
-	{
-		u32 pos = B.GetSize();
-		if (align != 0)
-		{
-			pos = RoundUp(pos + 2, align) - 2;
-			B.AddZeroesUntil(pos);
-		}
-		B.AddMem(&val, 2);
-		return pos;
-	}
-	static u32 Parse(const char* data, u32& pos)
-	{
-		u32 v = ReadT<u16>(data + pos);
-		pos += 2;
-		return v;
-	}
-};
 
-struct EncodingU32
+#if DATO_FAST_UNSAFE
+// only for use with aligned data or platforms that support unaligned loads (x86/x64/ARM64)
+// not guaranteed to work correctly if strict aliasing is enabled in compiler options!
+template <class T> DATO_FORCEINLINE static T ReadT(const void* ptr)
 {
-	static u32 Write(Buffer& B, u32 val, u32 align)
+	return *(const T*)ptr;
+}
+#else
+template <class T> DATO_FORCEINLINE inline T ReadT(const void* ptr)
+{
+	T v;
+	memcpy(&v, ptr, sizeof(T));
+	return v;
+}
+#endif
+
+inline u32 ReadSizeU8(const char* data, u32& pos)
+{
+	return u8(data[pos++]);
+}
+
+inline u32 ReadSizeU16(const char* data, u32& pos)
+{
+	u32 v = ReadT<u16>(data + pos);
+	pos += 2;
+	return v;
+}
+
+inline u32 ReadSizeU32(const char* data, u32& pos)
+{
+	u32 v = ReadT<u32>(data + pos);
+	pos += 4;
+	return v;
+}
+
+inline u32 ReadSizeU8X32(const char* data, u32& pos)
+{
+	u32 v = u8(data[pos++]);
+	if (v == 255)
 	{
-		u32 pos = B.GetSize();
-		if (align != 0)
-		{
-			pos = RoundUp(pos + 4, align) - 4;
-			B.AddZeroesUntil(pos);
-		}
-		B.AddMem(&val, 4);
-		return pos;
-	}
-	static u32 Parse(const char* data, u32& pos)
-	{
-		u32 v = ReadT<u32>(data + pos);
+		v = ReadT<u32>(data + pos);
 		pos += 4;
-		return v;
 	}
-};
+	return v;
+}
 
-struct Config0
+struct ReaderConfig0
 {
-	static u8 Identifier() { return 0; }
 	bool InitForReading(u8 id) { return id == 0; }
 
-	u32 WriteKeyLength(Buffer& B, u32 val, u32 align)
-	{ return EncodingU32::Write(B, val, align); }
-	u32 ParseKeyLength(const char* data, u32& pos) const
-	{ return EncodingU32::Parse(data, pos); }
-
-	u32 WriteObjectSize(Buffer& B, u32 val, u32 align)
-	{ return EncodingU32::Write(B, val, align); }
-	u32 ParseObjectSize(const char* data, u32& pos) const
-	{ return EncodingU32::Parse(data, pos); }
-
-	u32 WriteArrayLength(Buffer& B, u32 val, u32 align)
-	{ return EncodingU32::Write(B, val, align); }
-	u32 ParseArrayLength(const char* data, u32& pos) const
-	{ return EncodingU32::Parse(data, pos); }
-
-	u32 WriteValueLength(Buffer& B, u32 val, u32 align)
-	{ return EncodingU32::Write(B, val, align); }
-	u32 ParseValueLength(const char* data, u32& pos) const
-	{ return EncodingU32::Parse(data, pos); }
+	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
 };
 
-struct AdaptiveConfig
+struct ReaderConfig1
 {
-	typedef u32 ParseFunc(const char* data, u32& pos);
+	bool InitForReading(u8 id) { return id == 1; }
 
-	ParseFunc* keyLength = nullptr;
-	ParseFunc* objectSize = nullptr;
-	ParseFunc* arrayLength = nullptr;
-	ParseFunc* valueLength = nullptr;
+	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
+	{ return ReadSizeU8X32(data, pos); }
+};
 
-	// static u8 Identifier() -- cannot be used for serialization
+struct ReaderConfig2
+{
+	bool InitForReading(u8 id) { return id == 2; }
+
+	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
+	{ return ReadSizeU8X32(data, pos); }
+	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
+	{ return ReadSizeU8X32(data, pos); }
+	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
+	{ return ReadSizeU8X32(data, pos); }
+	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
+	{ return ReadSizeU8X32(data, pos); }
+};
+
+struct ReaderConfig3
+{
+	bool InitForReading(u8 id) { return id == 3; }
+
+	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
+	{ return ReadSizeU8(data, pos); }
+	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
+	{ return ReadSizeU8(data, pos); }
+	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
+	{ return ReadSizeU32(data, pos); }
+};
+
+struct ReaderConfig4
+{
+	bool InitForReading(u8 id) { return id == 4; }
+
+	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
+	{ return ReadSizeU8(data, pos); }
+	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
+	{ return ReadSizeU8(data, pos); }
+	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
+	{ return ReadSizeU8X32(data, pos); }
+	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
+	{ return ReadSizeU8X32(data, pos); }
+};
+
+struct ReaderAdaptiveConfig
+{
+	typedef u32 ReadFunc(const char* data, u32& pos);
+
+	ReadFunc* keyLength = nullptr;
+	ReadFunc* objectSize = nullptr;
+	ReadFunc* arrayLength = nullptr;
+	ReadFunc* valueLength = nullptr;
+
 	bool InitForReading(u8 id)
 	{
 		switch (id)
 		{
 		case 0:
-			keyLength = &EncodingU32::Parse;
-			objectSize = &EncodingU32::Parse;
-			arrayLength = &EncodingU32::Parse;
-			valueLength = &EncodingU32::Parse;
+			keyLength = &ReadSizeU32;
+			objectSize = &ReadSizeU32;
+			arrayLength = &ReadSizeU32;
+			valueLength = &ReadSizeU32;
+			return true;
+		case 1:
+			keyLength = &ReadSizeU32;
+			objectSize = &ReadSizeU32;
+			arrayLength = &ReadSizeU32;
+			valueLength = &ReadSizeU8X32;
+			return true;
+		case 2:
+			keyLength = &ReadSizeU8X32;
+			objectSize = &ReadSizeU8X32;
+			arrayLength = &ReadSizeU8X32;
+			valueLength = &ReadSizeU8X32;
+			return true;
+		case 3:
+			keyLength = &ReadSizeU8;
+			objectSize = &ReadSizeU8;
+			arrayLength = &ReadSizeU32;
+			valueLength = &ReadSizeU32;
+			return true;
+		case 4:
+			keyLength = &ReadSizeU8;
+			objectSize = &ReadSizeU8;
+			arrayLength = &ReadSizeU8X32;
+			valueLength = &ReadSizeU8X32;
 			return true;
 		}
 		return false;
 	}
 
-	u32 ParseKeyLength(const char* data, u32& pos) const { return keyLength(data, pos); }
-	u32 ParseObjectSize(const char* data, u32& pos) const { return objectSize(data, pos); }
-	u32 ParseArrayLength(const char* data, u32& pos) const { return arrayLength(data, pos); }
-	u32 ParseValueLength(const char* data, u32& pos) const { return valueLength(data, pos); }
+	u32 ReadKeyLength(const char* data, u32& pos) const { return keyLength(data, pos); }
+	u32 ReadObjectSize(const char* data, u32& pos) const { return objectSize(data, pos); }
+	u32 ReadArrayLength(const char* data, u32& pos) const { return arrayLength(data, pos); }
+	u32 ReadValueLength(const char* data, u32& pos) const { return valueLength(data, pos); }
 };
-
-static const u8 FLAG_Aligned = 1 << 0;
-static const u8 FLAG_IntegerKeys = 1 << 1;
-static const u8 FLAG_SortedKeys = 1 << 2;
-static const u8 FLAG_BigEndian = 1 << 3;
-static const u8 FLAG_RelativeObjectRefs = 1 << 4;
 
 template <class Config>
 struct BufferReader
@@ -246,25 +282,25 @@ private:
 	// compares the bytes until the first 0-char
 	bool KeyEquals(u32 kpos, const char* str) const
 	{
-		_cfg.ParseKeyLength(_data, kpos);
+		_cfg.ReadKeyLength(_data, kpos);
 		return strcmp(str, &_data[kpos]) == 0;
 	}
 	int KeyCompare(u32 kpos, const char* str) const
 	{
-		_cfg.ParseKeyLength(_data, kpos);
+		_cfg.ReadKeyLength(_data, kpos);
 		return strcmp(str, &_data[kpos]);
 	}
 	// compares the size first, then all of bytes
 	bool KeyEquals(u32 kpos, const void* mem, size_t lenMem) const
 	{
-		u32 len = _cfg.ParseKeyLength(_data, kpos);
+		u32 len = _cfg.ReadKeyLength(_data, kpos);
 		if (len != lenMem)
 			return false;
 		return memcmp(mem, &_data[kpos], len) == 0;
 	}
 	int KeyCompare(u32 kpos, const void* mem, size_t lenMem) const
 	{
-		u32 len = _cfg.ParseKeyLength(_data, kpos);
+		u32 len = _cfg.ReadKeyLength(_data, kpos);
 		u32 testLen = len < lenMem ? len : lenMem;
 		if (int bc = memcmp(mem, &_data[kpos], testLen))
 			return bc;
@@ -300,7 +336,7 @@ public:
 		ObjectAccessor(BufferReader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_objpos = pos;
-			_size = r->_cfg.ParseObjectSize(r->_data, _objpos);
+			_size = r->_cfg.ReadObjectSize(r->_data, _objpos);
 		}
 
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
@@ -324,7 +360,7 @@ public:
 		{
 			assert(i < _size);
 			u32 kpos = _r->RD<u32>(_objpos + i * 4);
-			_r->_cfg.ParseKeyLength(_r->_data, kpos);
+			_r->_cfg.ReadKeyLength(_r->_data, kpos);
 			return &_r->_data[kpos];
 		}
 
@@ -340,7 +376,11 @@ public:
 			assert(i < _size);
 			u32 vpos = _objpos + _size * 4 + i * 4;
 			u32 tpos = _objpos + _size * 8 + i;
-			return { _r, _r->RD<u32>(vpos), _r->RD<u8>(tpos) };
+			u32 val = _r->RD<u32>(vpos);
+			u8 type = _r->RD<u8>(tpos);
+			if (_r->_flags & FLAG_RelativeObjectRefs && IsReferenceType(type))
+				val = _objpos - val;
+			return { _r, val, type };
 		}
 
 		// searching for values
@@ -451,7 +491,7 @@ public:
 		ArrayAccessor(BufferReader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_arrpos = pos;
-			_size = r->_cfg.ParseArrayLength(r->_data, _arrpos);
+			_size = r->_cfg.ReadArrayLength(r->_data, _arrpos);
 		}
 
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
@@ -473,7 +513,11 @@ public:
 			assert(i < _size);
 			u32 vpos = _arrpos + _size * 4 + i * 4;
 			u32 tpos = _arrpos + _size * 8 + i;
-			return { _r, _r->RD<u32>(vpos), _r->RD<u8>(tpos) };
+			u32 val = _r->RD<u32>(vpos);
+			u8 type = _r->RD<u8>(tpos);
+			if (_r->_flags & FLAG_RelativeObjectRefs && IsReferenceType(type))
+				val = _arrpos - val;
+			return { _r, val, type };
 		}
 	};
 	template <class T>
@@ -493,7 +537,7 @@ public:
 
 		TypedArrayAccessor(BufferReader* r, u32 pos)
 		{
-			_size = r->_cfg.ParseValueLength(r->_data, pos);
+			_size = r->_cfg.ReadValueLength(r->_data, pos);
 			_data = (const T*) (r->_data + pos);
 		}
 
@@ -559,7 +603,7 @@ public:
 			_subtype = r->RD<u8>(pos++);
 			assert(_subtype == SubtypeInfo<T>::Subtype);
 			_elemCount = r->RD<u8>(pos++);
-			_size = r->_cfg.ParseValueLength(r->_data, pos);
+			_size = r->_cfg.ReadValueLength(r->_data, pos);
 			_data = (const T*) (r->_data + pos);
 		}
 
@@ -737,7 +781,7 @@ public:
 	}
 };
 
-typedef BufferReader<Config0> Config0BufferReader;
-typedef BufferReader<AdaptiveConfig> UniversalBufferReader;
+typedef BufferReader<ReaderConfig0> Config0BufferReader;
+typedef BufferReader<ReaderAdaptiveConfig> UniversalBufferReader;
 
 } // dato

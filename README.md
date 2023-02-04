@@ -123,6 +123,15 @@ REF(T) = uint32
 # an offset from the start of the file (before the prefix)
 # in this spec, T optionally specifies the type that is expected to be at the end of the reference
 
+VREF(T) = uint32
+# -- if PROPERTY-BYTE [bitwise-and] bit-4 (relative refs) --
+# an offset backwards from the object's "origin" (aligned offset to data after size)
+# absolute offset = object's origin - VREF-value
+# relative references to values tend to compress better since referenced values are typically nearby
+# in this spec, T optionally specifies the type that is expected to be at the end of the reference
+# -- otherwise --
+# same as REF(T)
+
 OBJECT =
 {
 	ALIGN(SIZE(OBJECT), 4) # for mixed-value sizes, the alignment must take into account all the values
@@ -197,7 +206,7 @@ VECTOR-ARRAY(T) =
 	values = T[vecsize * count]
 }
 
-VALUE = int32 | uint32 | float32 | REF(int64 | uint64 | float64 | ARRAY | OBJECT | TYPED-ARRAY | VECTOR | VECTOR-ARRAY)
+VALUE = int32 | uint32 | float32 | VREF(int64 | uint64 | float64 | ARRAY | OBJECT | TYPED-ARRAY | VECTOR | VECTOR-ARRAY)
 
 TYPE = uint8
 - 0: null (value = 0)
@@ -208,20 +217,20 @@ TYPE = uint8
 - 4: float32 (value = input)
 # external value reference types:
 # - one value:
-- 5: int64 (value = REF(int64(input)))
-- 6: uint64 (value = REF(uint64(input)))
-- 7: float64 (value = REF(float64(input)))
+- 5: int64 (value = VREF(int64(input)))
+- 6: uint64 (value = VREF(uint64(input)))
+- 7: float64 (value = VREF(float64(input)))
 # - generic containers:
-- 8: array (value = REF(ARRAY))
-- 9: object (value = REF(OBJECT))
+- 8: array (value = VREF(ARRAY))
+- 9: object (value = VREF(OBJECT))
 # - raw arrays (identified by purpose)
 # (strings contain an extra 0-termination value not included in their size)
-- 10: string, 8-bit characters (value = REF(STRING-8))
-- 11: string, 16-bit characters (value = REF(STRING-16))
-- 12: string, 32-bit characters (value = REF(STRING-32))
-- 13: byte array (value = REF(BYTE-ARRAY))
-- 14: vector (value = REF(VECTOR))
-- 15: vector array (value = REF(VECTOR-ARRAY))
+- 10: string, 8-bit characters (value = VREF(STRING-8))
+- 11: string, 16-bit characters (value = VREF(STRING-16))
+- 12: string, 32-bit characters (value = VREF(STRING-32))
+- 13: byte array (value = VREF(BYTE-ARRAY))
+- 14: vector (value = VREF(VECTOR))
+- 15: vector array (value = VREF(VECTOR-ARRAY))
 - 16-127: reserved # likely to be used for standardizing frequently used common formats to remove the need to incur the length overhead of putting them into generic typed arrays
 - 128-255: application-specific
 
