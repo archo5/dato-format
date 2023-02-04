@@ -4,7 +4,9 @@
 #include <assert.h>
 #include <string.h>
 #include <malloc.h>
+#ifdef DATO_USE_STD_SORT // increases compile time, only valuable as a reference/workaround
 #include <algorithm>
+#endif
 
 
 #ifdef _MSC_VER
@@ -183,12 +185,6 @@ struct Builder
 		_ReserveForAppend(size);
 		memcpy(&_data[_size], mem, size);
 		_size += size;
-	}
-	DATO_FORCEINLINE u32 AddMemRP(const void* mem, u32 size)
-	{
-		u32 ret = _size;
-		AddMem(mem, size);
-		return ret;
 	}
 
 	void SetError_ValueOutOfRange();
@@ -369,8 +365,129 @@ struct EntryRef
 	ValueRef value;
 };
 
+inline u32 MemHash(const void* rawp, u32 len)
+{
+	auto* mem = (const char*) rawp;
+	u32 nToHash = len < 32 ? len : 32;
+	u32 interval = len / nToHash;
+	u32 hash = 0x811c9dc5;
+	for (u32 i = 0; i < len; i += interval)
+	{
+		hash ^= mem[i];
+		hash *= 0x01000193;
+	}
+	return hash;
+}
+
+struct MemReuseHashTable
+{
+	struct Entry
+	{
+		u32 valuePos;
+		u32 dataOff;
+		u32 len;
+		u32 hash;
+	};
+
+	char** _pdata = nullptr; // must be initialized
+	Entry* _entries = nullptr;
+	u32 _numEntries = 0;
+	u32 _memEntries = 0;
+	static constexpr const u32 NO_VALUE = 0xffffffff;
+	u32* _table = nullptr;
+	u32 _numTableSlots = 0;
+
+	MemReuseHashTable(char*& data) : _pdata(&data) {}
+	~MemReuseHashTable()
+	{
+		free(_entries);
+		free(_table);
+	}
+
+	Entry* Find(const void* mem, u32 len) const
+	{
+		char* data = *_pdata;
+		u32 hash = MemHash(mem, len);
+		u32 ipos = hash % _numTableSlots;
+		u32 pos = ipos;
+		for (;;)
+		{
+			u32 p = _table[pos];
+			if (p == NO_VALUE)
+				return nullptr;
+			Entry& e = _entries[p];
+			if (e.hash == hash &&
+				e.len == len &&
+				memcmp(&data[e.dataOff], mem, len) == 0)
+				return &e;
+			pos = (pos + 1) % _numTableSlots;
+			if (pos == ipos)
+				return nullptr;
+		}
+	}
+
+	// must not already exist in the table
+	void Insert(u32 valuePos, u32 dataOff, u32 len)
+	{
+		if (_numEntries * 5 >= _numTableSlots * 4)
+			_Rehash(_numTableSlots == 0 ? 16 : _numTableSlots * 2);
+
+		if (_numEntries >= _memEntries)
+		{
+			_memEntries = _memEntries == 0 ? 16 : _memEntries;
+			_entries = (Entry*) realloc(_entries, _memEntries * sizeof(Entry));
+		}
+
+		char* data = *_pdata;
+		u32 hash = MemHash(&data[dataOff], len);
+		u32 entryIndex = _numEntries++;
+		_entries[entryIndex] = { valuePos, dataOff, len, hash };
+		_Insert(hash, entryIndex);
+	}
+
+	void _Rehash(u32 newSlots)
+	{
+		_table = (u32*) realloc(_table, newSlots * sizeof(u32));
+		_numTableSlots = newSlots;
+
+		for (u32 i = 0; i < newSlots; i++)
+			_table[i] = NO_VALUE;
+
+		for (u32 i = 0; i < _numEntries; i++)
+		{
+			const Entry& e = _entries[i];
+			_Insert(e.hash, i);
+		}
+	}
+
+	void _Insert(u32 hash, u32 entryIndex)
+	{
+		u32 ipos = hash % _numTableSlots;
+		u32 pos = ipos;
+		for (;;)
+		{
+			u32 p = _table[pos];
+			if (p == NO_VALUE)
+			{
+				_table[pos] = entryIndex;
+				return;
+			}
+
+			// TODO robin hood hashing
+
+			pos = (pos + 1) % _numTableSlots;
+			if (pos == ipos)
+			{
+				assert(!"unexpected failure to insert");
+				return;
+			}
+		}
+	}
+};
+
 struct WriterBase : Builder
 {
+	MemReuseHashTable _keyTable { _data };
 	u32 _rootPos;
 	u8 _flags;
 
@@ -383,14 +500,32 @@ struct WriterBase : Builder
 		// root position
 		if (flags & FLAG_Aligned)
 			AddZeroesUntil(RoundUp(GetSize(), 4));
-		// reserve space for zero
 		_rootPos = GetSize();
-		AddZeroesUntil(GetSize() + 4);
+		AddZeroesUntil(GetSize() + 4); // reserve the space
 	}
 
 	void SetRoot(u32 pos)
 	{
 		memcpy(&_data[_rootPos], &pos, 4);
+	}
+
+	DATO_FORCEINLINE u8 Align(u8 a)
+	{
+		return _flags & FLAG_Aligned ? a : 0;
+	}
+
+	DATO_FORCEINLINE KeyRef WriteIntKey(u32 k)
+	{
+		return { k, 0, 0 };
+	}
+
+	DATO_FORCEINLINE u32 AddValue8(const void* mem)
+	{
+		u32 ret = GetSize();
+		if (_flags & FLAG_Aligned)
+			AddZeroesUntil(RoundUp(ret, 8));
+		AddMem(mem, 8);
+		return ret;
 	}
 
 	DATO_FORCEINLINE ValueRef WriteNull()
@@ -415,15 +550,15 @@ struct WriterBase : Builder
 	}
 	DATO_FORCEINLINE ValueRef WriteS64(s64 v)
 	{
-		return { TYPE_S64, AddMemRP(&v, sizeof(v)) };
+		return { TYPE_S64, AddValue8(&v) };
 	}
 	DATO_FORCEINLINE ValueRef WriteU64(u64 v)
 	{
-		return { TYPE_S64, AddMemRP(&v, sizeof(v)) };
+		return { TYPE_S64, AddValue8(&v) };
 	}
 	DATO_FORCEINLINE ValueRef WriteF64(u64 v)
 	{
-		return { TYPE_S64, AddMemRP(&v, sizeof(v)) };
+		return { TYPE_S64, AddValue8(&v) };
 	}
 
 	ValueRef WriteVectorRaw(const void* data, u8 subtype, u8 sizeAlign, u8 elemCount)
@@ -442,78 +577,219 @@ struct WriterBase : Builder
 	}
 };
 
+template <class T>
+struct TempMem
+{
+	T* data = nullptr;
+	u32 size = 0;
+
+	~TempMem()
+	{
+		free(data);
+	}
+	T* GetData(u32 atLeast)
+	{
+		if (size < atLeast)
+		{
+			size += atLeast;
+			free(data);
+			data = (T*) malloc(sizeof(T) * size);
+		}
+		return data;
+	}
+	T* CopyData(const T* from, u32 count)
+	{
+		T* data = GetData(count);
+		memcpy(data, from, sizeof(T) * count);
+		return data;
+	}
+};
+
+#ifndef DATO_USE_STD_SORT
+template <class T> DATO_FORCEINLINE void PODSwap(T& a, T& b)
+{
+	T tmp = a;
+	a = b;
+	b = tmp;
+}
+
+inline void SortEntriesByKeyInt(TempMem<EntryRef>& tempMem, EntryRef* entries, u32 count)
+{
+	if (count <= 16)
+	{
+		// insertion sort
+		for (u32 i = 1; i < count; i++)
+		{
+			for (u32 j = i; j > 0 && entries[j - 1].key.pos > entries[j].key.pos; j--)
+			{
+				PODSwap(entries[j - 1], entries[j]);
+			}
+		}
+		return;
+	}
+
+	// radix sort
+	EntryRef* from = entries;
+	EntryRef* to = tempMem.GetData(count);
+	for (int part = 0; part < 4; part++)
+	{
+		u32 shift = part * 8;
+
+		// count the number of elements in each bucket
+		u32 numElements[256] = {};
+		for (u32 i = 0; i < count; i++)
+			numElements[(from[i].key.pos >> shift) & 0xff]++;
+
+		// allocate ranges for each bucket
+		u32 offsets[256];
+		u32 o = 0;
+		for (u32 i = 0; i < 256; i++)
+		{
+			offsets[i] = o;
+			o += numElements[i];
+		}
+
+		// copy elements according to their assigned offsets
+		for (u32 i = 0; i < count; i++)
+			to[offsets[(from[i].key.pos >> shift) & 0xff]++] = from[i];
+
+		PODSwap(from, to);
+	}
+}
+
+inline int Q3SS_CharAt(const char* mem, const EntryRef& e, u32 at)
+{
+	if (at < e.key.dataLen)
+		return u8(mem[e.key.dataPos + at]);
+	return -1;
+}
+
+// three-way string quicksort
+inline void Quick3StringSort(const char* mem, EntryRef* entries, int low, int high, u32 which)
+{
+	if (high <= low)
+		return;
+
+	int sublow = low;
+	int subhigh = high;
+	int ch = Q3SS_CharAt(mem, entries[low], which);
+	for (int i = low + 1; i <= subhigh; )
+	{
+		int nch = Q3SS_CharAt(mem, entries[i], which);
+		if (nch < ch)
+			PODSwap(entries[sublow++], entries[i++]);
+		else if (nch > ch)
+			PODSwap(entries[i], entries[subhigh--]);
+		else
+			i++;
+	}
+	Quick3StringSort(mem, entries, low, sublow - 1, which);
+	if (ch >= 0)
+		Quick3StringSort(mem, entries, sublow, subhigh, which + 1);
+	Quick3StringSort(mem, entries, subhigh + 1, high, which);
+}
+
+inline void SortEntriesByKeyString(const char* mem, EntryRef* entries, u32 count)
+{
+	Quick3StringSort(mem, entries, 0, int(count - 1), 0);
+}
+#endif // DATO_USE_STD_SORT
+
 template <class Config>
 struct Writer : WriterBase
 {
-	EntryRef* _sortableEntries = nullptr;
-	u32 _sortableEntryCount = 0;
+	TempMem<EntryRef> _sortableEntries;
+	TempMem<EntryRef> _sortCopyEntries;
+	bool _skipDuplicateKeys;
 
 	DATO_FORCEINLINE Writer
 	(
 		const char* prefix = "DATO",
 		u32 pfxsize = 4,
-		u8 flags = FLAG_Aligned | FLAG_RelativeObjectRefs
+		u8 flags = FLAG_Aligned | FLAG_RelativeObjectRefs,
+		bool skipDuplicateKeys = true
 	)
 		: WriterBase(prefix, pfxsize, Config::Identifier(), flags)
+		, _skipDuplicateKeys(skipDuplicateKeys)
 	{}
-	~Writer()
-	{
-		free(_sortableEntries);
-	}
 
-	DATO_FORCEINLINE u8 Align(u8 a)
+	KeyRef WriteStringKey(const char* str, u32 size)
 	{
-		return _flags & FLAG_Aligned ? a : 0;
-	}
+		if (_skipDuplicateKeys)
+		{
+			if (auto* e = _keyTable.Find(str, size))
+				return { e->valuePos, e->dataPos, e->len };
+		}
 
-	KeyRef WriteKey(const char* str, u32 size)
-	{
 		u32 pos = Config::WriteKeyLength(*this, size, 0, nullptr, 0);
 		u32 dataPos = GetSize();
 		AddMem(str, size);
 		AddByte(0);
+
+		if (_skipDuplicateKeys)
+		{
+			_keyTable.Insert(pos, dataPos, size);
+		}
+
 		return { pos, dataPos, size };
 	}
-	DATO_FORCEINLINE KeyRef WriteKey(const char* str) { return WriteKey(str, StrLen(str)); }
+	DATO_FORCEINLINE KeyRef WriteStringKey(const char* str) { return WriteStringKey(str, StrLen(str)); }
 
 	ValueRef WriteObject(const EntryRef* entries, u32 count)
 	{
 		if (_flags & FLAG_SortedKeys)
 		{
-			if (count > _sortableEntryCount)
-			{
-				_sortableEntryCount += count;
-				_sortableEntries = realloc(_sortableEntries, _sortableEntryCount * sizeof(EntryRef));
-			}
-			memcpy(_sortableEntries, entries, count * sizeof(EntryRef));
-			entries = _sortableEntries;
-			if (_flags & FLAG_IntegerKeys)
-			{
-				std::sort(
-					_sortableEntries,
-					_sortableEntries + count,
-					[](const EntryRef& a, const EntryRef& b)
-				{
-					return a.key.pos < b.key.pos;
-				});
-			}
-			else
-			{
-				std::sort(
-					_sortableEntries,
-					_sortableEntries + count,
-					[this](const EntryRef& a, const EntryRef& b)
-				{
-					u32 minSize = a.key.dataLen < b.key.dataLen ? a.key.dataLen : b.key.dataLen;
-					const char* ka = _data + a.key.dataPos;
-					const char* kb = _data + b.key.dataPos;
-					if (int diff = memcmp(ka, kb, minSize))
-						return diff < 0;
-					return a.key.dataLen < b.key.dataLen;
-				});
-			}
+			EntryRef* sea = _sortableEntries.CopyData(entries, count);
+			_SortObjectEntries(sea, count);
+			entries = sea;
 		}
 		return _WriteObjectImpl(entries, count);
+	}
+
+	ValueRef WriteObjectInlineSort(EntryRef* entries, u32 count)
+	{
+		if (_flags & FLAG_SortedKeys)
+		{
+			_SortObjectEntries(entries, count);
+		}
+		return _WriteObjectImpl(entries, count);
+	}
+
+	void _SortObjectEntries(EntryRef* entries, u32 count)
+	{
+		if (_flags & FLAG_IntegerKeys)
+		{
+#ifdef DATO_USE_STD_SORT
+			std::sort(
+				entries,
+				entries + count,
+				[](const EntryRef& a, const EntryRef& b)
+			{
+				return a.key.pos < b.key.pos;
+			});
+#else
+			SortEntriesByKeyInt(_sortCopyEntries, entries, count);
+#endif
+		}
+		else
+		{
+#ifdef DATO_USE_STD_SORT
+			std::sort(
+				entries,
+				entries + count,
+				[this](const EntryRef& a, const EntryRef& b)
+			{
+				u32 minSize = a.key.dataLen < b.key.dataLen ? a.key.dataLen : b.key.dataLen;
+				const char* ka = _data + a.key.dataPos;
+				const char* kb = _data + b.key.dataPos;
+				if (int diff = memcmp(ka, kb, minSize))
+					return diff < 0;
+				return a.key.dataLen < b.key.dataLen;
+			});
+#else
+			SortEntriesByKeyString(_data, entries, count);
+#endif
+		}
 	}
 
 	ValueRef _WriteObjectImpl(const EntryRef* entries, u32 count)

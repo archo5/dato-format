@@ -6,6 +6,7 @@
 int main()
 {
 	dato::Writer<dato::WriterConfig0> wr;
+	wr.WriteObject(nullptr, 0);
 
 	dato::UniversalBufferReader r;
 	auto root = r.GetRoot();
