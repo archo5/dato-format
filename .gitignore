@@ -1,1 +1,6 @@
 ﻿*.pyc
+*.ipch
+.vs
+*.ilk
+*.pdb
+*.exe

@@ -489,6 +489,7 @@ struct WriterBase : Builder
 {
 	MemReuseHashTable _keyTable { _data };
 	u32 _rootPos;
+	u32 _rootTypePos;
 	u8 _flags;
 
 	WriterBase(const char* prefix, u32 pfxsize, u8 cfgid, u8 flags) : _flags(flags)
@@ -497,6 +498,10 @@ struct WriterBase : Builder
 		AddByte(cfgid);
 		AddByte(flags);
 
+		// root type
+		_rootTypePos = GetSize();
+		AddByte(0);
+
 		// root position
 		if (flags & FLAG_Aligned)
 			AddZeroesUntil(RoundUp(GetSize(), 4));
@@ -504,9 +509,10 @@ struct WriterBase : Builder
 		AddZeroesUntil(GetSize() + 4); // reserve the space
 	}
 
-	void SetRoot(u32 pos)
+	void SetRoot(ValueRef objRef)
 	{
-		memcpy(&_data[_rootPos], &pos, 4);
+		_data[_rootTypePos] = objRef.type;
+		memcpy(&_data[_rootPos], &objRef.pos, 4);
 	}
 
 	DATO_FORCEINLINE u8 Align(u8 a)
@@ -521,9 +527,9 @@ struct WriterBase : Builder
 
 	DATO_FORCEINLINE u32 AddValue8(const void* mem)
 	{
-		u32 ret = GetSize();
 		if (_flags & FLAG_Aligned)
-			AddZeroesUntil(RoundUp(ret, 8));
+			AddZeroesUntil(RoundUp(GetSize(), 8));
+		u32 ret = GetSize();
 		AddMem(mem, 8);
 		return ret;
 	}
@@ -546,7 +552,7 @@ struct WriterBase : Builder
 	}
 	DATO_FORCEINLINE ValueRef WriteF32(f32 v)
 	{
-		return { TYPE_U32, BitCast<u32>(v) };
+		return { TYPE_F32, BitCast<u32>(v) };
 	}
 	DATO_FORCEINLINE ValueRef WriteS64(s64 v)
 	{
@@ -554,11 +560,11 @@ struct WriterBase : Builder
 	}
 	DATO_FORCEINLINE ValueRef WriteU64(u64 v)
 	{
-		return { TYPE_S64, AddValue8(&v) };
+		return { TYPE_U64, AddValue8(&v) };
 	}
-	DATO_FORCEINLINE ValueRef WriteF64(u64 v)
+	DATO_FORCEINLINE ValueRef WriteF64(f64 v)
 	{
-		return { TYPE_S64, AddValue8(&v) };
+		return { TYPE_F64, AddValue8(&v) };
 	}
 
 	ValueRef WriteVectorRaw(const void* data, u8 subtype, u8 sizeAlign, u8 elemCount)
@@ -827,7 +833,7 @@ struct Writer : WriterBase
 			for (u32 i = 0; i < count; i++)
 			{
 				u32 vp = values[i].pos;
-				if (IsReferenceType(entries[i].type))
+				if (IsReferenceType(values[i].type))
 					vp -= objpos;
 				AddU32(vp);
 			}
@@ -839,7 +845,7 @@ struct Writer : WriterBase
 		}
 		for (u32 i = 0; i < count; i++)
 			AddByte(values[i].type);
-		return pos;
+		return { TYPE_Array, pos };
 	}
 
 	ValueRef WriteString8(const char* str, u32 size)

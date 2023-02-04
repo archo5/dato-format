@@ -275,6 +275,7 @@ private:
 	const char* _data = nullptr;
 	u32 _len = 0;
 	u8 _flags = 0;
+	u8 _rootType = 0;
 	u32 _root = 0;
 
 	template <class T> DATO_FORCEINLINE T RD(u32 pos) const { return ReadT<T>(_data + pos); }
@@ -747,14 +748,14 @@ public:
 
 	bool Init(const void* data, u32 len, const void* prefix, u32 prefix_len, u8 ignore_flags)
 	{
-		if (prefix_len + 2 > len)
+		if (prefix_len + 3 > len)
 			return false;
 
 		if (0 != memcmp(data, prefix, prefix_len))
 			return false;
 
 		const char* cdata = (const char*) data;
-		u32 rootpos = prefix_len + 2;
+		u32 rootpos = prefix_len + 3;
 		if (cdata[prefix_len + 1] & FLAG_Aligned)
 			rootpos = RoundUp(rootpos, 4);
 		if (rootpos + 4 > len)
@@ -772,12 +773,13 @@ public:
 		_len = len;
 		_flags = cdata[prefix_len + 1] & ~ignore_flags;
 		_root = root;
+		_rootType = cdata[prefix_len + 2];
 		return true;
 	}
 
-	ObjectAccessor GetRoot()
+	DynamicAccessor GetRoot()
 	{
-		return { this, _root };
+		return { this, _root, _rootType };
 	}
 };
 
