@@ -56,30 +56,31 @@ void TestSortingInt()
 	using namespace dato;
 
 	TempMem tm;
-#define SORT_TEST(...) \
+#define SORT_TEST(type, ...) \
 	{ \
 		unsigned order[] = { __VA_ARGS__ }; \
 		IntMapEntry data[arraysize(order)]; \
 		GenEntries(data, { __VA_ARGS__ }); \
-		SortEntriesByKeyInt(tm, data, arraysize(data)); \
+		SortEntriesByKeyInt_##type(tm, data, arraysize(data)); \
 		CheckEntries(data, arraysize(data), __LINE__); \
 	}
 	// insertion sort
-	SORT_TEST(0, 1);
-	SORT_TEST(1, 0);
-	SORT_TEST(0, 1, 2);
-	SORT_TEST(2, 1, 0);
-	SORT_TEST(1, 0, 2);
-	SORT_TEST(0, 2, 1);
-	SORT_TEST(0, 2, 2);
-	SORT_TEST(5, 4, 3, 2, 1);
-	SORT_TEST(15, 16, 31, 32);
+	SORT_TEST(Insertion, 0, 1);
+	SORT_TEST(Insertion, 1, 0);
+	SORT_TEST(Insertion, 0, 1, 2);
+	SORT_TEST(Insertion, 2, 1, 0);
+	SORT_TEST(Insertion, 1, 0, 2);
+	SORT_TEST(Insertion, 0, 2, 1);
+	SORT_TEST(Insertion, 0, 2, 2);
+	SORT_TEST(Insertion, 5, 4, 3, 2, 1);
+	SORT_TEST(Insertion, 15, 16, 31, 32);
 	// radix sort
-	SORT_TEST(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
-	SORT_TEST(16,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
-	SORT_TEST(0,1,2,3,4,5,6,7,8,9,16,10,11,12,13,14,15);
-	SORT_TEST(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,0);
-	SORT_TEST(16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0);
+	SORT_TEST(Radix, 0, 1, 2);
+	SORT_TEST(Radix, 2, 1, 0);
+	SORT_TEST(Radix, 1, 0, 2);
+	SORT_TEST(Radix, 0, 2, 1);
+	SORT_TEST(Radix, 0, 2, 2);
+	SORT_TEST(Radix, 5, 4, 3, 2, 1);
 #undef SORT_TEST
 }
 
