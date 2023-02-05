@@ -6,6 +6,84 @@
 #include <stdio.h>
 
 
+#define V(...) __VA_ARGS__
+template <class T, size_t N> constexpr size_t arraysize(T(&)[N]) { return N; }
+
+
+static void GenEntries(dato::IntMapEntry* entries, std::initializer_list<unsigned> order)
+{
+	for (unsigned o : order)
+	{
+		auto& e = *entries++;
+		e.key = 0x12345678U + 0x01010101U * o;
+		e.value.type = 0x01U * o;
+		e.value.pos = 0x23456789U + 0x01010101U * o;
+		//printf("%08x %02x %08x\n", e.key, e.value.type, e.value.pos);
+	}
+}
+
+static bool CheckEntries(dato::IntMapEntry* entries, unsigned count, int line)
+{
+	bool success = true;
+	dato::IntMapEntry* end = entries + count;
+	dato::IntMapEntry* pe = nullptr;
+	for (dato::IntMapEntry* e = entries; e != end; pe = e++)
+	{
+		if (e->value.type + 0x78U != (e->key & 0xff) ||
+			e->value.pos != e->key - 0x12345678U + 0x23456789U)
+		{
+			printf("line %d: slicing detected\n", line);
+			printf("%08x %02x %08x\n", e->key, e->value.type, e->value.pos);
+			success = false;
+		}
+		if (!pe)
+			continue;
+		if (pe->key > e->key)
+		{
+			printf("line %d: wrong element order: [%d]%u > [%d]%u\n",
+				line,
+				int(pe - entries), unsigned(pe->key),
+				int(e - entries), unsigned(e->key));
+			success = false;
+		}
+	}
+	return success;
+}
+
+void TestSortingInt()
+{
+	puts("testing sorting (int)");
+	using namespace dato;
+
+	TempMem tm;
+#define SORT_TEST(...) \
+	{ \
+		unsigned order[] = { __VA_ARGS__ }; \
+		IntMapEntry data[arraysize(order)]; \
+		GenEntries(data, { __VA_ARGS__ }); \
+		SortEntriesByKeyInt(tm, data, arraysize(data)); \
+		CheckEntries(data, arraysize(data), __LINE__); \
+	}
+	// insertion sort
+	SORT_TEST(0, 1);
+	SORT_TEST(1, 0);
+	SORT_TEST(0, 1, 2);
+	SORT_TEST(2, 1, 0);
+	SORT_TEST(1, 0, 2);
+	SORT_TEST(0, 2, 1);
+	SORT_TEST(0, 2, 2);
+	SORT_TEST(5, 4, 3, 2, 1);
+	SORT_TEST(15, 16, 31, 32);
+	// radix sort
+	SORT_TEST(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
+	SORT_TEST(16,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
+	SORT_TEST(0,1,2,3,4,5,6,7,8,9,16,10,11,12,13,14,15);
+	SORT_TEST(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,0);
+	SORT_TEST(16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0);
+#undef SORT_TEST
+}
+
+
 struct EBElement
 {
 	int size;
@@ -180,5 +258,6 @@ void BuildOnlyTest()
 
 int main()
 {
+	TestSortingInt();
 	TestBasicStructures();
 }
