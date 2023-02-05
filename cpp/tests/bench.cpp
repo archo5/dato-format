@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <algorithm>
+
 
 void SINK(void*);
 #define DoNotOpt(x) SINK((void*)&(x))
@@ -91,10 +93,13 @@ void Overhead()
 
 void IntSortSpeed()
 {
-	dato::TempMem tm;
-	tm.GetData<dato::IntMapEntry>(100);
-	dato::IntMapEntry entries[100];
-	for (int N = 24; N < 40; N++)
+	using namespace dato;
+	TempMem tm;
+	tm.GetData<IntMapEntry>(100);
+	IntMapEntry entries[100];
+	int FIRST = 56;
+	int LAST = 64;
+	for (int N = FIRST; N < LAST; N++)
 	{
 		char buf[32];
 		sprintf(buf, "insertion sort (%d)", N);
@@ -108,7 +113,7 @@ void IntSortSpeed()
 			DoNotOpt(entries);
 		}
 	}
-	for (int N = 24; N < 40; N++)
+	for (int N = FIRST; N < LAST; N++)
 	{
 		char buf[32];
 		sprintf(buf, "radix sort (%d)", N);
@@ -119,6 +124,23 @@ void IntSortSpeed()
 				entries[i].key = rand();
 			B.PrepDone();
 			SortEntriesByKeyInt_Radix(tm, entries, N);
+			DoNotOpt(entries);
+		}
+	}
+	for (int N = FIRST; N < LAST; N++)
+	{
+		char buf[32];
+		sprintf(buf, "std::sort (%d)", N);
+		Benchmark B(buf);
+		while (B.Iterate())
+		{
+			for (int i = 0; i < N; i++)
+				entries[i].key = rand();
+			B.PrepDone();
+			std::sort(entries, entries + N, [](const IntMapEntry& a, const IntMapEntry& b)
+			{
+				return a.key < b.key;
+			});
 			DoNotOpt(entries);
 		}
 	}

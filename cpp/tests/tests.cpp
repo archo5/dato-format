@@ -85,6 +85,66 @@ void TestSortingInt()
 }
 
 
+static void CheckSorting(const char* start, int line)
+{
+	using namespace dato;
+	// generate the data
+	StringMapEntry entries[100];
+	u32 numEntries = 0;
+	for (auto* s = start; *s; s += strlen(s) + 1)
+	{
+		auto& e = entries[numEntries++];
+		e.key.pos = s - start - 1;
+		e.key.dataPos = s - start;
+		e.key.dataLen = strlen(s);
+		e.value.pos = MemHash(s, strlen(s));
+		e.value.type = e.value.pos * 3;
+	}
+
+	SortEntriesByKeyString(start, entries, numEntries);
+
+#if 1
+	for (u32 i = 0; i < numEntries; i++)
+		printf("%s,", start + entries[i].key.dataPos);
+	puts("");
+#endif
+	for (u32 i = 1; i < numEntries; i++)
+	{
+		u32 minlen = entries[i - 1].key.dataLen;
+		if (minlen > entries[i].key.dataLen)
+			minlen = entries[i].key.dataLen;
+		int diff = memcmp(start + entries[i - 1].key.dataPos, start + entries[i].key.dataPos, minlen);
+		if (diff > 0 ||
+			(diff == 0 && entries[i - 1].key.dataLen > entries[i].key.dataLen))
+		{
+			printf("line %d: wrong element order: [%d]\"%s\" > [%d]\"%s\"\n",
+				line,
+				int(entries[i - 1].key.dataLen),
+				start + entries[i - 1].key.dataPos,
+				int(entries[i].key.dataLen),
+				start + entries[i].key.dataPos);
+		}
+	}
+}
+
+void TestSortingString()
+{
+	puts("testing sorting (string)");
+	using namespace dato;
+
+#define SORT_TEST(start) CheckSorting(start, __LINE__)
+	SORT_TEST("a\0b\0");
+	SORT_TEST("b\0a\0");
+	SORT_TEST("aa\0b\0");
+	SORT_TEST("a\0bb\0");
+	SORT_TEST("aa\0a\0");
+	SORT_TEST("a\0ab\0");
+	SORT_TEST("ab\0a\0");
+	SORT_TEST("ab\0aa\0");
+#undef SORT_TEST
+}
+
+
 struct EBElement
 {
 	int size;
@@ -260,5 +320,6 @@ void BuildOnlyTest()
 int main()
 {
 	TestSortingInt();
+	TestSortingString();
 	TestBasicStructures();
 }

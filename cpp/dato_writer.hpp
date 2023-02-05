@@ -634,12 +634,19 @@ template <class T> DATO_FORCEINLINE void PODSwap(T& a, T& b)
 inline void SortEntriesByKeyInt_Insertion(TempMem&, IntMapEntry* entries, u32 count)
 {
 	// insertion sort
-	for (u32 i = 1; i < count; i++)
+	if (count < 2)
+		return;
+	auto* end = entries + count;
+	for (auto* i = entries + 1; i != end; i++)
 	{
-		for (u32 j = i; j > 0 && entries[j - 1].key > entries[j].key; j--)
+		auto cur = *i;
+		auto* j = i;
+		while (j != entries && cur.key < j[-1].key)
 		{
-			PODSwap(entries[j - 1], entries[j]);
+			auto* oldj = j--;
+			*oldj = *j;
 		}
+		*j = cur;
 	}
 }
 
@@ -676,7 +683,7 @@ inline void SortEntriesByKeyInt_Radix(TempMem& tempMem, IntMapEntry* entries, u3
 
 DATO_FORCEINLINE void SortEntriesByKeyInt(TempMem& tempMem, IntMapEntry* entries, u32 count)
 {
-	if (count <= 32)
+	if (count <= 58)
 		SortEntriesByKeyInt_Insertion(tempMem, entries, count);
 	else
 		SortEntriesByKeyInt_Radix(tempMem, entries, count);
