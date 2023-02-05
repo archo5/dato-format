@@ -676,7 +676,7 @@ inline void SortEntriesByKeyInt_Radix(TempMem& tempMem, IntMapEntry* entries, u3
 
 DATO_FORCEINLINE void SortEntriesByKeyInt(TempMem& tempMem, IntMapEntry* entries, u32 count)
 {
-	if (count <= 16)
+	if (count <= 32)
 		SortEntriesByKeyInt_Insertion(tempMem, entries, count);
 	else
 		SortEntriesByKeyInt_Radix(tempMem, entries, count);
