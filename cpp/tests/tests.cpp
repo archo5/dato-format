@@ -141,6 +141,12 @@ void TestSortingString()
 	SORT_TEST("a\0ab\0");
 	SORT_TEST("ab\0a\0");
 	SORT_TEST("ab\0aa\0");
+	// GLTF
+	SORT_TEST("extensionsUsed\0extensionsRequired\0accessors\0animations\0asset\0"
+	/**/"buffers\0bufferViews\0cameras\0images\0materials\0meshes\0nodes\0"
+	/**/"samplers\0scene\0scenes\0skins\0textures\0extensions\0extras\0"); // root
+	SORT_TEST("name\0extensions\0extras\0pbrMetallicRoughness\0normalTexture\0occlusionTexture\0"
+	/**/"emissiveTexture\0emissiveFactor\0alphaMode\0alphaCutoff\0doubleSided\0"); // material
 #undef SORT_TEST
 }
 
