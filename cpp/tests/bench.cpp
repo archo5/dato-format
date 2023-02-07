@@ -210,70 +210,127 @@ static unsigned GenSortingData_FromZSSL(
 	return i;
 }
 
+inline void SortEntriesByKeyString_Q3S(const char* mem, dato::StringMapEntry* entries, dato::u32 count)
+{
+	dato::Quick3StringSort(mem, entries, 0, int(count - 1), 0, 0);
+}
+
+inline void SortEntriesByKeyString_INS(const char* mem, dato::StringMapEntry* entries, dato::u32 count)
+{
+	dato::Quick3StringSort(mem, entries, 0, int(count - 1), 0, 9999999);
+}
+
 void StringSortSpeed_RandomChars()
 {
+	puts("= string sorting speed (with random chars) =");
 	using namespace dato;
 	StringMapEntry entries[100];
 	int FIRST = 3;
-	int LAST = 12;
-	// random chars
-	for (int N = FIRST; N <= LAST; N++)
+	int LAST = 80;
+	int STEP = 10;
+	puts("- random(10) chars -");
+	for (int N = FIRST; N <= LAST; N += STEP)
 	{
 		char buf[32];
-		sprintf(buf, "q3str sort (random/%d)", N);
-		Benchmark B(buf);
-		while (B.Iterate())
+		sprintf(buf, "strins sort (rand10/%d)", N);
 		{
-			GenSortingData_RandomChars(entries, N, 10, 0);
-			B.PrepDone();
-			SortEntriesByKeyString(sortStringBuf, entries, N);
-			DoNotOpt(entries);
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				GenSortingData_RandomChars(entries, N, 10, 0);
+				B.PrepDone();
+				SortEntriesByKeyString_INS(sortStringBuf, entries, N);
+				DoNotOpt(entries);
+			}
+		}
+		sprintf(buf, "q3str sort (rand10/%d)", N);
+		{
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				GenSortingData_RandomChars(entries, N, 10, 0);
+				B.PrepDone();
+				SortEntriesByKeyString_Q3S(sortStringBuf, entries, N);
+				DoNotOpt(entries);
+			}
+		}
+		sprintf(buf, "tuned sort (rand10/%d)", N);
+		{
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				GenSortingData_RandomChars(entries, N, 10, 0);
+				B.PrepDone();
+				SortEntriesByKeyString(sortStringBuf, entries, N);
+				DoNotOpt(entries);
+			}
+		}
+		sprintf(buf, "std::sort (rand10/%d)", N);
+		{
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				GenSortingData_RandomChars(entries, N, 10, 0);
+				B.PrepDone();
+				SortStringMapEntries_STD(entries, N);
+				DoNotOpt(entries);
+			}
 		}
 	}
-	for (int N = FIRST; N <= LAST; N++)
+	puts("- prefixed(10) + random(10) chars -");
+	for (int N = FIRST; N <= LAST; N += STEP)
 	{
 		char buf[32];
-		sprintf(buf, "std::sort (random/%d)", N);
-		Benchmark B(buf);
-		while (B.Iterate())
+		sprintf(buf, "strins sort (pfx10+rand10/%d)", N);
 		{
-			GenSortingData_RandomChars(entries, N, 10, 0);
-			B.PrepDone();
-			SortStringMapEntries_STD(entries, N);
-			DoNotOpt(entries);
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				GenSortingData_RandomChars(entries, N, 10, 10);
+				B.PrepDone();
+				SortEntriesByKeyString_INS(sortStringBuf, entries, N);
+				DoNotOpt(entries);
+			}
 		}
-	}
-	// prefixed + random chars
-	for (int N = FIRST; N <= LAST; N++)
-	{
-		char buf[32];
-		sprintf(buf, "q3str sort (pfx+random/%d)", N);
-		Benchmark B(buf);
-		while (B.Iterate())
+		sprintf(buf, "q3str sort (pfx10+rand10/%d)", N);
 		{
-			GenSortingData_RandomChars(entries, N, 10, 10);
-			B.PrepDone();
-			SortEntriesByKeyString(sortStringBuf, entries, N);
-			DoNotOpt(entries);
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				GenSortingData_RandomChars(entries, N, 10, 10);
+				B.PrepDone();
+				SortEntriesByKeyString_Q3S(sortStringBuf, entries, N);
+				DoNotOpt(entries);
+			}
 		}
-	}
-	for (int N = FIRST; N <= LAST; N++)
-	{
-		char buf[32];
-		sprintf(buf, "std::sort (pfx+random/%d)", N);
-		Benchmark B(buf);
-		while (B.Iterate())
+		sprintf(buf, "tuned sort (pfx10+rand10/%d)", N);
 		{
-			GenSortingData_RandomChars(entries, N, 10, 10);
-			B.PrepDone();
-			SortStringMapEntries_STD(entries, N);
-			DoNotOpt(entries);
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				GenSortingData_RandomChars(entries, N, 10, 10);
+				B.PrepDone();
+				SortEntriesByKeyString(sortStringBuf, entries, N);
+				DoNotOpt(entries);
+			}
+		}
+		sprintf(buf, "std::sort (pfx10+rand10/%d)", N);
+		{
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				GenSortingData_RandomChars(entries, N, 10, 10);
+				B.PrepDone();
+				SortStringMapEntries_STD(entries, N);
+				DoNotOpt(entries);
+			}
 		}
 	}
 }
 
 void StringSortSpeed_SpecificSets()
 {
+	puts("= string sorting speed (specific sets) =");
 	using namespace dato;
 	StringMapEntry entries[100];
 	// various entry sets
@@ -296,7 +353,29 @@ void StringSortSpeed_SpecificSets()
 	for (int set = 0; set < sizeof(entrySets) / sizeof(entrySets[0]); set++)
 	{
 		char buf[32];
+		sprintf(buf, "strins sort (set %d)", set);
+		{
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				u32 N = GenSortingData_FromZSSL(entries, entrySets[set]);
+				B.PrepDone();
+				SortEntriesByKeyString_INS(sortStringBuf, entries, N);
+				DoNotOpt(entries);
+			}
+		}
 		sprintf(buf, "q3str sort (set %d)", set);
+		{
+			Benchmark B(buf);
+			while (B.Iterate())
+			{
+				u32 N = GenSortingData_FromZSSL(entries, entrySets[set]);
+				B.PrepDone();
+				SortEntriesByKeyString_Q3S(sortStringBuf, entries, N);
+				DoNotOpt(entries);
+			}
+		}
+		sprintf(buf, "tuned sort (set %d)", set);
 		{
 			Benchmark B(buf);
 			while (B.Iterate())
@@ -324,7 +403,7 @@ void StringSortSpeed_SpecificSets()
 int main()
 {
 	Overhead();
-	//IntSortSpeed();
+	IntSortSpeed();
 	StringSortSpeed_RandomChars();
 	StringSortSpeed_SpecificSets();
 }

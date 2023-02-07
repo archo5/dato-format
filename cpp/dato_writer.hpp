@@ -1,9 +1,17 @@
 
 #pragma once
 
-#include <assert.h>
-#include <string.h>
-#include <malloc.h>
+#if !defined(DATO_MEMCPY) || !defined(DATO_MEMCMP)
+#  include <string.h>
+#endif
+
+#if !defined(DATO_MALLOC) || !defined(DATO_REALLOC) || !defined(DATO_FREE)
+#  include <malloc.h>
+#  define DATO_MALLOC malloc
+#  define DATO_REALLOC realloc
+#  define DATO_FREE free
+#endif
+
 #ifdef DATO_USE_STD_SORT // increases compile time, only valuable as a reference/workaround
 #include <algorithm>
 #endif
@@ -11,8 +19,10 @@
 
 #ifdef _MSC_VER
 #  define DATO_FORCEINLINE __forceinline
+#  define DATO_BREAKPOINT __debugbreak()
 #else
 #  define DATO_FORCEINLINE inline __attribute__((always_inline))
+#  define DATO_BREAKPOINT __builtin_debugtrap()
 #endif
 
 
@@ -83,6 +93,14 @@ static const u8 FLAG_Aligned = 1 << 0;
 static const u8 FLAG_SortedKeys = 1 << 1;
 static const u8 FLAG_RelContValRefs = 1 << 2; // relative container value references
 
+#ifndef DATO_MEMCPY
+#  define DATO_MEMCPY memcpy
+#endif
+
+#ifndef DATO_MEMCMP
+#  define DATO_MEMCMP memcmp
+#endif
+
 // override this if you're adding inline types
 #ifndef DATO_IS_REFERENCE_TYPE
 #define DATO_IS_REFERENCE_TYPE(t) ((t) >= TYPE_S64)
@@ -133,7 +151,7 @@ struct Builder
 
 	~Builder()
 	{
-		free(_data);
+		DATO_FREE(_data);
 	}
 
 	DATO_FORCEINLINE const void* GetData() const { return _data; }
@@ -147,7 +165,7 @@ struct Builder
 
 	void _ResizeImpl(u32 newSize)
 	{
-		_data = (char*) realloc(_data, newSize);
+		_data = (char*) DATO_REALLOC(_data, newSize);
 		_mem = newSize;
 	}
 	void _ReserveForAppend(u32 sizeToAppend)
@@ -384,6 +402,17 @@ inline u32 MemHash(const void* rawp, u32 len)
 	return hash;
 }
 
+inline constexpr u32 StrHash(const char* str)
+{
+	u32 hash = 0x811c9dc5;
+	while (*str)
+	{
+		hash ^= *str++;
+		hash *= 0x01000193;
+	}
+	return hash;
+}
+
 struct MemReuseHashTable
 {
 	struct Entry
@@ -405,8 +434,8 @@ struct MemReuseHashTable
 	MemReuseHashTable(char*& data) : _pdata(&data) {}
 	~MemReuseHashTable()
 	{
-		free(_entries);
-		free(_table);
+		DATO_FREE(_entries);
+		DATO_FREE(_table);
 	}
 
 	Entry* Find(const void* mem, u32 len) const
@@ -442,7 +471,7 @@ struct MemReuseHashTable
 		if (_numEntries >= _memEntries)
 		{
 			_memEntries = _memEntries == 0 ? 16 : _memEntries;
-			_entries = (Entry*) realloc(_entries, _memEntries * sizeof(Entry));
+			_entries = (Entry*) DATO_REALLOC(_entries, _memEntries * sizeof(Entry));
 		}
 
 		char* data = *_pdata;
@@ -454,7 +483,7 @@ struct MemReuseHashTable
 
 	void _Rehash(u32 newSlots)
 	{
-		_table = (u32*) realloc(_table, newSlots * sizeof(u32));
+		_table = (u32*) DATO_REALLOC(_table, newSlots * sizeof(u32));
 		_numTableSlots = newSlots;
 
 		for (u32 i = 0; i < newSlots; i++)
@@ -485,7 +514,8 @@ struct MemReuseHashTable
 			pos = (pos + 1) % _numTableSlots;
 			if (pos == ipos)
 			{
-				assert(!"unexpected failure to insert");
+				// unexpectedly failed to insert
+				DATO_BREAKPOINT;
 				return;
 			}
 		}
@@ -597,15 +627,15 @@ struct TempMem
 
 	~TempMem()
 	{
-		free(data);
+		DATO_FREE(data);
 	}
 	void* GetDataBytes(u32 atLeast)
 	{
 		if (size < atLeast)
 		{
 			size += atLeast;
-			free(data);
-			data = malloc(size);
+			DATO_FREE(data);
+			data = DATO_MALLOC(size);
 		}
 		return data;
 	}
@@ -696,11 +726,44 @@ inline int Q3SS_CharAt(const char* mem, const StringMapEntry& e, u32 at)
 	return -1;
 }
 
+inline bool SIN_LessThan(const char* mem, const KeyRef& a, const KeyRef& b, u32 which)
+{
+	u32 minLen = a.dataLen < b.dataLen ? a.dataLen : b.dataLen;
+	int diff = memcmp(mem + a.dataPos + which, mem + b.dataPos + which, minLen - which);
+	if (diff)
+		return diff < 0;
+	return a.dataLen < b.dataLen;
+}
+
+inline void InsertionStringSort(const char* mem, StringMapEntry* entries, int low, int high, u32 which)
+{
+	StringMapEntry* start = entries + low;
+	StringMapEntry* end = entries + high + 1;
+	for (auto* i = start + 1; i != end; i++)
+	{
+		auto cur = *i;
+		auto* j = i;
+		while (j != start && SIN_LessThan(mem, cur.key, j[-1].key, which))
+		{
+			auto* oldj = j--;
+			*oldj = *j;
+		}
+		*j = cur;
+	}
+}
+
 // three-way string quicksort
-inline void Quick3StringSort(const char* mem, StringMapEntry* entries, int low, int high, u32 which)
+inline void Quick3StringSort(
+	const char* mem, StringMapEntry* entries, int low, int high, u32 which, int IST = 64)
 {
 	if (high <= low)
 		return;
+
+	if (high - low < IST)
+	{
+		InsertionStringSort(mem, entries, low, high, which);
+		return;
+	}
 
 	int sublow = low;
 	int subhigh = high;

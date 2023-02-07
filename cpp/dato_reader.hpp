@@ -1,14 +1,49 @@
 
 #pragma once
 
-#include <assert.h>
-#include <string.h>
+#if !defined(DATO_MEMCPY) || !defined(DATO_MEMCMP)
+#  include <string.h>
+#endif
 
 
 #ifdef _MSC_VER
 #  define DATO_FORCEINLINE __forceinline
+#  define DATO_BREAKPOINT __debugbreak()
 #else
 #  define DATO_FORCEINLINE inline __attribute__((always_inline))
+#  define DATO_BREAKPOINT __builtin_debugtrap()
+#endif
+
+// validation - triggers a code breakpoint when hitting the failure condition
+
+// whether to validate the accessed parts of the buffer
+#ifndef DATO_VALIDATE_BUFFERS
+#  ifdef NDEBUG
+#    define DATO_VALIDATE_BUFFERS 0
+#  else
+#    define DATO_VALIDATE_BUFFERS 1
+#  endif
+#endif
+
+#if DATO_VALIDATE_BUFFERS
+#  define DATO_BUFFER_EXPECT(x) if (!(x)) DATO_BREAKPOINT
+#else
+#  define DATO_BUFFER_EXPECT(x)
+#endif
+
+// whether to validate inputs
+#ifndef DATO_VALIDATE_INPUTS
+#  ifdef NDEBUG
+#    define DATO_VALIDATE_INPUTS 0
+#  else
+#    define DATO_VALIDATE_INPUTS 1
+#  endif
+#endif
+
+#if DATO_VALIDATE_INPUTS
+#  define DATO_INPUT_EXPECT(x) if (!(x)) DATO_BREAKPOINT
+#else
+#  define DATO_INPUT_EXPECT(x)
 #endif
 
 
@@ -79,6 +114,14 @@ static const u8 FLAG_Aligned = 1 << 0;
 static const u8 FLAG_SortedKeys = 1 << 1;
 static const u8 FLAG_RelContValRefs = 1 << 2; // relative container value references
 
+#ifndef DATO_MEMCPY
+#  define DATO_MEMCPY memcpy
+#endif
+
+#ifndef DATO_MEMCMP
+#  define DATO_MEMCMP memcmp
+#endif
+
 // override this if you're adding inline types
 #ifndef DATO_IS_REFERENCE_TYPE
 #define DATO_IS_REFERENCE_TYPE(t) ((t) >= TYPE_S64)
@@ -108,35 +151,43 @@ template <class T> DATO_FORCEINLINE static T ReadT(const void* ptr)
 template <class T> DATO_FORCEINLINE inline T ReadT(const void* ptr)
 {
 	T v;
-	memcpy(&v, ptr, sizeof(T));
+	DATO_MEMCPY(&v, ptr, sizeof(T));
 	return v;
 }
 #endif
 
-inline u32 ReadSizeU8(const char* data, u32& pos)
+#define DATO_READSIZE_ARGS const char* data, u32 len, u32& pos
+#define DATO_READSIZE_PASS data, len, pos
+
+inline u32 ReadSizeU8(DATO_READSIZE_ARGS)
 {
+	DATO_BUFFER_EXPECT(pos + 1 <= len);
 	return u8(data[pos++]);
 }
 
-inline u32 ReadSizeU16(const char* data, u32& pos)
+inline u32 ReadSizeU16(DATO_READSIZE_ARGS)
 {
+	DATO_BUFFER_EXPECT(pos + 2 <= len);
 	u32 v = ReadT<u16>(data + pos);
 	pos += 2;
 	return v;
 }
 
-inline u32 ReadSizeU32(const char* data, u32& pos)
+inline u32 ReadSizeU32(DATO_READSIZE_ARGS)
 {
+	DATO_BUFFER_EXPECT(pos + 4 <= len);
 	u32 v = ReadT<u32>(data + pos);
 	pos += 4;
 	return v;
 }
 
-inline u32 ReadSizeU8X32(const char* data, u32& pos)
+inline u32 ReadSizeU8X32(DATO_READSIZE_ARGS)
 {
+	DATO_BUFFER_EXPECT(pos + 1 <= len);
 	u32 v = u8(data[pos++]);
 	if (v == 255)
 	{
+		DATO_BUFFER_EXPECT(pos + 4 <= len);
 		v = ReadT<u32>(data + pos);
 		pos += 4;
 	}
@@ -147,75 +198,75 @@ struct ReaderConfig0
 {
 	bool InitForReading(u8 id) { return id == 0; }
 
-	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
-	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
-	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
-	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadValueLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
 };
 
 struct ReaderConfig1
 {
 	bool InitForReading(u8 id) { return id == 1; }
 
-	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
-	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
-	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
-	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
-	{ return ReadSizeU8X32(data, pos); }
+	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadValueLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
 };
 
 struct ReaderConfig2
 {
 	bool InitForReading(u8 id) { return id == 2; }
 
-	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
-	{ return ReadSizeU8X32(data, pos); }
-	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
-	{ return ReadSizeU8X32(data, pos); }
-	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
-	{ return ReadSizeU8X32(data, pos); }
-	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
-	{ return ReadSizeU8X32(data, pos); }
+	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadValueLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
 };
 
 struct ReaderConfig3
 {
 	bool InitForReading(u8 id) { return id == 3; }
 
-	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
-	{ return ReadSizeU8(data, pos); }
-	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
-	{ return ReadSizeU8(data, pos); }
-	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
-	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
-	{ return ReadSizeU32(data, pos); }
+	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadValueLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU32(DATO_READSIZE_PASS); }
 };
 
 struct ReaderConfig4
 {
 	bool InitForReading(u8 id) { return id == 4; }
 
-	DATO_FORCEINLINE u32 ReadKeyLength(const char* data, u32& pos) const
-	{ return ReadSizeU8(data, pos); }
-	DATO_FORCEINLINE u32 ReadObjectSize(const char* data, u32& pos) const
-	{ return ReadSizeU8(data, pos); }
-	DATO_FORCEINLINE u32 ReadArrayLength(const char* data, u32& pos) const
-	{ return ReadSizeU8X32(data, pos); }
-	DATO_FORCEINLINE u32 ReadValueLength(const char* data, u32& pos) const
-	{ return ReadSizeU8X32(data, pos); }
+	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
+	DATO_FORCEINLINE u32 ReadValueLength(DATO_READSIZE_ARGS) const
+	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
 };
 
 struct ReaderAdaptiveConfig
 {
-	typedef u32 ReadFunc(const char* data, u32& pos);
+	typedef u32 ReadFunc(DATO_READSIZE_ARGS);
 
 	ReadFunc* keyLength = nullptr;
 	ReadFunc* objectSize = nullptr;
@@ -260,10 +311,10 @@ struct ReaderAdaptiveConfig
 		return false;
 	}
 
-	u32 ReadKeyLength(const char* data, u32& pos) const { return keyLength(data, pos); }
-	u32 ReadObjectSize(const char* data, u32& pos) const { return objectSize(data, pos); }
-	u32 ReadArrayLength(const char* data, u32& pos) const { return arrayLength(data, pos); }
-	u32 ReadValueLength(const char* data, u32& pos) const { return valueLength(data, pos); }
+	u32 ReadKeyLength(DATO_READSIZE_ARGS) const { return keyLength(DATO_READSIZE_PASS); }
+	u32 ReadObjectSize(DATO_READSIZE_ARGS) const { return objectSize(DATO_READSIZE_PASS); }
+	u32 ReadArrayLength(DATO_READSIZE_ARGS) const { return arrayLength(DATO_READSIZE_PASS); }
+	u32 ReadValueLength(DATO_READSIZE_ARGS) const { return valueLength(DATO_READSIZE_PASS); }
 };
 
 template <class Config>
@@ -282,27 +333,27 @@ private:
 	// compares the bytes until the first 0-char
 	bool KeyEquals(u32 kpos, const char* str) const
 	{
-		_cfg.ReadKeyLength(_data, kpos);
+		_cfg.ReadKeyLength(_data, _len, kpos);
 		return strcmp(str, &_data[kpos]) == 0;
 	}
 	int KeyCompare(u32 kpos, const char* str) const
 	{
-		_cfg.ReadKeyLength(_data, kpos);
+		_cfg.ReadKeyLength(_data, _len, kpos);
 		return strcmp(str, &_data[kpos]);
 	}
 	// compares the size first, then all of bytes
 	bool KeyEquals(u32 kpos, const void* mem, size_t lenMem) const
 	{
-		u32 len = _cfg.ReadKeyLength(_data, kpos);
+		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
 		if (len != lenMem)
 			return false;
-		return memcmp(mem, &_data[kpos], len) == 0;
+		return DATO_MEMCMP(mem, &_data[kpos], len) == 0;
 	}
 	int KeyCompare(u32 kpos, const void* mem, size_t lenMem) const
 	{
-		u32 len = _cfg.ReadKeyLength(_data, kpos);
+		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
 		u32 testLen = len < lenMem ? len : lenMem;
-		if (int bc = memcmp(mem, &_data[kpos], testLen))
+		if (int bc = DATO_MEMCMP(mem, &_data[kpos], testLen))
 			return bc;
 		if (lenMem == len)
 			return 0;
@@ -321,7 +372,8 @@ public:
 		MapAccessor(BufferReader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_objpos = pos;
-			_size = r->_cfg.ReadObjectSize(r->_data, _objpos);
+			_size = r->_cfg.ReadObjectSize(r->_data, r->_len, _objpos);
+			DATO_BUFFER_EXPECT(pos + 9 * _size <= r->_len);
 		}
 
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
@@ -335,7 +387,7 @@ public:
 		}
 		DynamicAccessor GetValueByIndex(size_t i) const
 		{
-			assert(i < _size);
+			DATO_INPUT_EXPECT(i < _size);
 			u32 vpos = _objpos + _size * 4 + i * 4;
 			u32 tpos = _objpos + _size * 8 + i;
 			u32 val = _r->RD<u32>(vpos);
@@ -370,7 +422,7 @@ public:
 
 		DATO_FORCEINLINE Iterator operator [](size_t i) const
 		{
-			assert(i < this->_size);
+			DATO_INPUT_EXPECT(i < this->_size);
 			return { this, i };
 		}
 
@@ -378,11 +430,12 @@ public:
 		const char* GetKeyCStr(size_t i, u32* pOutLen = nullptr) const
 		{
 			auto* BR = this->_r;
-			assert(i < this->_size);
+			DATO_INPUT_EXPECT(i < this->_size);
 			u32 kpos = BR->template RD<u32>(this->_objpos + i * 4);
-			u32 L = BR->_cfg.ReadKeyLength(BR->_data, kpos);
+			u32 L = BR->_cfg.ReadKeyLength(BR->_data, BR->_len, kpos);
 			if (pOutLen)
 				*pOutLen = L;
+			DATO_BUFFER_EXPECT(kpos + L + 1 <= this->_r->_len);
 			return &BR->_data[kpos];
 		}
 		DATO_FORCEINLINE u32 GetKeyLength(size_t i) const
@@ -476,14 +529,14 @@ public:
 
 		DATO_FORCEINLINE Iterator operator [](size_t i) const
 		{
-			assert(i < _size);
+			DATO_INPUT_EXPECT(i < _size);
 			return { this, i };
 		}
 
 		// retrieving keys
 		u32 GetKey(size_t i) const
 		{
-			assert(i < _size);
+			DATO_INPUT_EXPECT(i < _size);
 			return _r->RD<u32>(_objpos + i * 4);
 		}
 
@@ -537,7 +590,8 @@ public:
 		ArrayAccessor(BufferReader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_arrpos = pos;
-			_size = r->_cfg.ReadArrayLength(r->_data, _arrpos);
+			_size = r->_cfg.ReadArrayLength(r->_data, r->_len, _arrpos);
+			DATO_BUFFER_EXPECT(pos + 5 * _size <= r->_len);
 		}
 
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
@@ -556,7 +610,7 @@ public:
 		}
 		DynamicAccessor GetValueByIndex(size_t i) const
 		{
-			assert(i < _size);
+			DATO_INPUT_EXPECT(i < _size);
 			u32 vpos = _arrpos + _size * 4 + i * 4;
 			u32 tpos = _arrpos + _size * 8 + i;
 			u32 val = _r->RD<u32>(vpos);
@@ -583,7 +637,8 @@ public:
 
 		TypedArrayAccessor(BufferReader* r, u32 pos)
 		{
-			_size = r->_cfg.ReadValueLength(r->_data, pos);
+			_size = r->_cfg.ReadValueLength(r->_data, r->_len, pos);
+			DATO_BUFFER_EXPECT(pos + sizeof(T) * _size <= r->_len);
 			_data = (const T*) (r->_data + pos);
 		}
 
@@ -611,9 +666,11 @@ public:
 
 		VectorAccessor(BufferReader* r, u32 pos)
 		{
+			DATO_BUFFER_EXPECT(pos + 2 <= r->_len);
 			_subtype = r->RD<u8>(pos++);
-			assert(_subtype == SubtypeInfo<T>::Subtype);
+			DATO_INPUT_EXPECT(_subtype == SubtypeInfo<T>::Subtype);
 			_elemCount = r->RD<u8>(pos++);
+			DATO_BUFFER_EXPECT(pos + sizeof(T) * _elemCount <= r->_len);
 			_data = (const T*) (r->_data + pos);
 		}
 
@@ -631,7 +688,7 @@ public:
 
 			DATO_FORCEINLINE T operator [](size_t i) const
 			{
-				assert(i < elemCount);
+				DATO_INPUT_EXPECT(i < elemCount);
 				return ReadT<T>(&_ptr[i]);
 			}
 			DATO_FORCEINLINE const Iterator& operator * () const { return *this; }
@@ -646,10 +703,12 @@ public:
 
 		VectorArrayAccessor(BufferReader* r, u32 pos)
 		{
+			DATO_BUFFER_EXPECT(pos + 2 <= r->_len);
 			_subtype = r->RD<u8>(pos++);
-			assert(_subtype == SubtypeInfo<T>::Subtype);
+			DATO_INPUT_EXPECT(_subtype == SubtypeInfo<T>::Subtype);
 			_elemCount = r->RD<u8>(pos++);
-			_size = r->_cfg.ReadValueLength(r->_data, pos);
+			_size = r->_cfg.ReadValueLength(r->_data, r->_len, pos);
+			DATO_BUFFER_EXPECT(pos + sizeof(T) * _elemCount * _size <= r->_len);
 			_data = (const T*) (r->_data + pos);
 		}
 
@@ -679,21 +738,27 @@ public:
 		DATO_FORCEINLINE bool IsNull() const { return _type == TYPE_Null; }
 		DATO_FORCEINLINE u8 GetSubtype() const
 		{
-			assert(_type == TYPE_Vector || TYPE_VectorArray);
+			DATO_INPUT_EXPECT(_type == TYPE_Vector || TYPE_VectorArray);
+			DATO_BUFFER_EXPECT(_pos + 2 <= _len);
 			return _r->RD<u8>(_pos);
 		}
 		DATO_FORCEINLINE u8 GetElementCount() const
 		{
-			assert(_type == TYPE_Vector || TYPE_VectorArray);
+			DATO_INPUT_EXPECT(_type == TYPE_Vector || TYPE_VectorArray);
+			DATO_BUFFER_EXPECT(_pos + 2 <= _len);
 			return _r->RD<u8>(_pos + 1);
 		}
 
 		// type checks for more complex types
 		DATO_FORCEINLINE bool IsVector(u8 subtype, u8 elemCount) const
 		{
-			return _type == TYPE_Vector
-				&& _r->RD<u8>(_pos) == subtype
-				&& _r->RD<u8>(_pos + 1) == elemCount;
+			if (_type == TYPE_Vector)
+			{
+				DATO_BUFFER_EXPECT(_pos + 2 <= _len);
+				return _r->RD<u8>(_pos) == subtype
+					&& _r->RD<u8>(_pos + 1) == elemCount;
+			}
+			return false;
 		}
 		template<class T> DATO_FORCEINLINE bool IsVectorT(u8 elemCount) const
 		{
@@ -701,9 +766,13 @@ public:
 		}
 		DATO_FORCEINLINE bool IsVectorArray(u8 subtype, u8 elemCount) const
 		{
-			return _type == TYPE_VectorArray
-				&& _r->RD<u8>(_pos) == subtype
-				&& _r->RD<u8>(_pos + 1) == elemCount;
+			if (_type == TYPE_VectorArray)
+			{
+				DATO_BUFFER_EXPECT(_pos + 2 <= _len);
+				return _r->RD<u8>(_pos) == subtype
+					&& _r->RD<u8>(_pos + 1) == elemCount;
+			}
+			return false;
 		}
 		template<class T> DATO_FORCEINLINE bool IsVectorArrayT(u8 elemCount) const
 		{
@@ -711,48 +780,48 @@ public:
 		}
 
 		// reading the exact data
-		DATO_FORCEINLINE bool AsBool() const { assert(_type == TYPE_Bool); return _pos != 0; }
-		DATO_FORCEINLINE s32 AsS32() const { assert(_type == TYPE_S32); return _pos; }
-		DATO_FORCEINLINE u32 AsU32() const { assert(_type == TYPE_U32); return _pos; }
-		DATO_FORCEINLINE float AsF32() const { assert(_type == TYPE_U32); return ReadT<float>(&_pos); }
-		DATO_FORCEINLINE s64 AsS64() const { assert(_type == TYPE_S64); return _r->RD<s64>(_pos); }
-		DATO_FORCEINLINE u64 AsU64() const { assert(_type == TYPE_U64); return _r->RD<u64>(_pos); }
-		DATO_FORCEINLINE double AsF64() const { assert(_type == TYPE_F64); return _r->RD<double>(_pos); }
+		DATO_FORCEINLINE bool AsBool() const { DATO_INPUT_EXPECT(_type == TYPE_Bool); return _pos != 0; }
+		DATO_FORCEINLINE s32 AsS32() const { DATO_INPUT_EXPECT(_type == TYPE_S32); return _pos; }
+		DATO_FORCEINLINE u32 AsU32() const { DATO_INPUT_EXPECT(_type == TYPE_U32); return _pos; }
+		DATO_FORCEINLINE float AsF32() const { DATO_INPUT_EXPECT(_type == TYPE_U32); return ReadT<float>(&_pos); }
+		DATO_FORCEINLINE s64 AsS64() const { DATO_INPUT_EXPECT(_type == TYPE_S64); return _r->RD<s64>(_pos); }
+		DATO_FORCEINLINE u64 AsU64() const { DATO_INPUT_EXPECT(_type == TYPE_U64); return _r->RD<u64>(_pos); }
+		DATO_FORCEINLINE double AsF64() const { DATO_INPUT_EXPECT(_type == TYPE_F64); return _r->RD<double>(_pos); }
 
 		DATO_FORCEINLINE StringMapAccessor AsStringMap() const
 		{
-			assert(_type == TYPE_StringMap);
+			DATO_INPUT_EXPECT(_type == TYPE_StringMap);
 			return { _r, _pos };
 		}
 		DATO_FORCEINLINE IntMapAccessor AsIntMap() const
 		{
-			assert(_type == TYPE_IntMap);
+			DATO_INPUT_EXPECT(_type == TYPE_IntMap);
 			return { _r, _pos };
 		}
 		DATO_FORCEINLINE ArrayAccessor AsArray() const
 		{
-			assert(_type == TYPE_Array);
+			DATO_INPUT_EXPECT(_type == TYPE_Array);
 			return { _r, _pos };
 		}
 
 		DATO_FORCEINLINE StringAccessor<char> AsString8() const
 		{
-			assert(_type == TYPE_String8);
+			DATO_INPUT_EXPECT(_type == TYPE_String8);
 			return { _r, _pos };
 		}
 		DATO_FORCEINLINE StringAccessor<u16> AsString16() const
 		{
-			assert(_type == TYPE_String16);
+			DATO_INPUT_EXPECT(_type == TYPE_String16);
 			return { _r, _pos };
 		}
 		DATO_FORCEINLINE StringAccessor<u32> AsString32() const
 		{
-			assert(_type == TYPE_String32);
+			DATO_INPUT_EXPECT(_type == TYPE_String32);
 			return { _r, _pos };
 		}
 		DATO_FORCEINLINE ByteArrayAccessor AsByteArray() const
 		{
-			assert(_type == TYPE_ByteArray);
+			DATO_INPUT_EXPECT(_type == TYPE_ByteArray);
 			return { _r, _pos };
 		}
 
@@ -796,24 +865,23 @@ public:
 		}
 	};
 
-	bool Init(const void* data, u32 len, const void* prefix, u32 prefix_len, u8 ignore_flags)
+	bool Init(const void* data, u32 len, const void* prefix = "DATO", u32 prefix_len = 4, u8 ignore_flags = 0)
 	{
 		if (prefix_len + 3 > len)
 			return false;
 
-		if (0 != memcmp(data, prefix, prefix_len))
+		if (0 != DATO_MEMCMP(data, prefix, prefix_len))
 			return false;
 
 		const char* cdata = (const char*) data;
 		u32 rootpos = prefix_len + 3;
 		if (cdata[prefix_len + 1] & FLAG_Aligned)
 			rootpos = RoundUp(rootpos, 4);
-		if (rootpos + 4 > len)
+		DATO_BUFFER_EXPECT(rootpos + 4 <= len);
+		if (!(rootpos + 4 <= len))
 			return false;
 
 		u32 root = ReadT<u32>(cdata + rootpos);
-		if (root + 4 > len)
-			return false;
 
 		if (!_cfg.InitForReading(cdata[prefix_len]))
 			return false;
