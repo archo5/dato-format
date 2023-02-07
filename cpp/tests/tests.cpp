@@ -308,6 +308,7 @@ void TestMemReuseHashTable()
 	using namespace dato;
 
 #define ALLOCSTR(x) (char*) memcpy(malloc(sizeof(x)), x, sizeof(x))
+	// basic tests
 	{
 		char* data = ALLOCSTR("a\0b\0c\0");
 
@@ -386,6 +387,49 @@ void TestMemReuseHashTable()
 			printf("line %d: found an entry that isn't in the table!\n", __LINE__);
 
 		free(data);
+	}
+	// heavy fill
+	{
+		std::string buf;
+		std::vector<u32> strlist;
+		for (unsigned i = 1000; i < 10000; i++)
+		{
+			strlist.push_back(buf.size());
+			buf += std::to_string(i);
+			buf.push_back(0);
+		}
+		char* data = &buf[0];
+
+		MemReuseHashTable mrht(data);
+
+		for (u32 pos : strlist)
+			mrht.Insert(pos + 1, pos, strlen(buf.c_str() + pos));
+
+		for (u32 pos : strlist)
+		{
+			const char* str = buf.c_str() + pos;
+			u32 len = u32(strlen(str));
+			auto* e = mrht.Find(str, len);
+			if (e)
+			{
+				if (e->dataOff != pos ||
+					e->len != len ||
+					e->valuePos != pos + 1 ||
+					e->hash != StrHash(str))
+					printf("ERROR (line %d): bad returned entry for string [%u]\"%s\" at %u\n",
+						__LINE__, unsigned(len), str, unsigned(pos));
+			}
+			else
+			{
+				printf("ERROR (line %d): did not find the entry for string [%u]\"%s\" at %u\n",
+					__LINE__, unsigned(len), str, unsigned(pos));
+			}
+		}
+
+		printf("#entries=%u #memEntries=%u #tableSlots=%u\n",
+			unsigned(mrht._numEntries),
+			unsigned(mrht._memEntries),
+			unsigned(mrht._numTableSlots));
 	}
 #undef ALLOCSTR
 	puts("-----");

@@ -98,7 +98,7 @@ FILE =
 	PROPERTY-BYTE
 	TYPE
 	ALIGN(4)
-	REF(OBJECT)
+	VALUE # VREF ignores the flag (as the file header not an array or map) and is always absolute
 }
 
 PREFIX-BYTES = "DATO" | [user-defined]

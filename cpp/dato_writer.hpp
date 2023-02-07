@@ -388,6 +388,7 @@ struct StringMapEntry
 	ValueRef value;
 };
 
+// both hashing functions are FNV-1a (32-bit)
 inline u32 MemHash(const void* rawp, u32 len)
 {
 	auto* mem = (const char*) rawp;
@@ -465,12 +466,13 @@ struct MemReuseHashTable
 	// must not already exist in the table
 	void Insert(u32 valuePos, u32 dataOff, u32 len)
 	{
+		// keep at least 20% of the hash->pos table free
 		if (_numEntries * 5 >= _numTableSlots * 4)
 			_Rehash(_numTableSlots == 0 ? 16 : _numTableSlots * 2);
 
 		if (_numEntries >= _memEntries)
 		{
-			_memEntries = _memEntries == 0 ? 16 : _memEntries;
+			_memEntries = _memEntries == 0 ? 16 : _memEntries * 2;
 			_entries = (Entry*) DATO_REALLOC(_entries, _memEntries * sizeof(Entry));
 		}
 
@@ -483,7 +485,8 @@ struct MemReuseHashTable
 
 	void _Rehash(u32 newSlots)
 	{
-		_table = (u32*) DATO_REALLOC(_table, newSlots * sizeof(u32));
+		DATO_FREE(_table);
+		_table = (u32*) DATO_MALLOC(newSlots * sizeof(u32));
 		_numTableSlots = newSlots;
 
 		for (u32 i = 0; i < newSlots; i++)
