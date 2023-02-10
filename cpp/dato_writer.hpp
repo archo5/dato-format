@@ -25,6 +25,23 @@
 #  define DATO_BREAKPOINT __builtin_debugtrap()
 #endif
 
+// validation - triggers a code breakpoint when hitting the failure condition
+
+// whether to validate inputs
+#ifndef DATO_VALIDATE_INPUTS
+#  ifdef NDEBUG
+#    define DATO_VALIDATE_INPUTS 0
+#  else
+#    define DATO_VALIDATE_INPUTS 1
+#  endif
+#endif
+
+#if DATO_VALIDATE_INPUTS
+#  define DATO_INPUT_EXPECT(x) if (!(x)) DATO_BREAKPOINT
+#else
+#  define DATO_INPUT_EXPECT(x)
+#endif
+
 
 namespace dato {
 
@@ -613,8 +630,9 @@ struct WriterBase : Builder
 		return { TYPE_F64, AddValue8(&v) };
 	}
 
-	ValueRef WriteVectorRaw(const void* data, u8 subtype, u8 sizeAlign, u8 elemCount)
+	ValueRef WriteVectorRaw(const void* data, u8 subtype, u8 sizeAlign, u16 elemCount)
 	{
+		DATO_INPUT_EXPECT(elemCount >= 1 && elemCount <= 255);
 		if (_flags & FLAG_Aligned)
 			AddZeroesUntil(RoundUp(GetSize() + 2, sizeAlign) - 2);
 		u32 pos = GetSize();
@@ -624,7 +642,7 @@ struct WriterBase : Builder
 		return { TYPE_Vector, pos };
 	}
 	template <class T>
-	DATO_FORCEINLINE ValueRef WriteVectorT(const T* values, u8 elemCount)
+	DATO_FORCEINLINE ValueRef WriteVectorT(const T* values, u16 elemCount)
 	{
 		return WriteVectorRaw(values, SubtypeInfo<T>::Subtype, sizeof(T), elemCount);
 	}
@@ -1028,9 +1046,10 @@ struct Writer : WriterBase
 		return { TYPE_ByteArray, pos };
 	}
 
-	ValueRef WriteVectorArrayRaw(const void* data, u8 subtype, u8 sizeAlign, u8 elemCount, u32 length)
+	ValueRef WriteVectorArrayRaw(const void* data, u8 subtype, u8 sizeAlign, u16 elemCount, u32 length)
 	{
-		u8 prefix[] = { subtype, elemCount };
+		DATO_INPUT_EXPECT(elemCount >= 1 && elemCount <= 255);
+		u8 prefix[] = { subtype, u8(elemCount) };
 		u32 pos = Config::WriteValueLength(
 			*this,
 			length,
@@ -1041,7 +1060,7 @@ struct Writer : WriterBase
 		return { TYPE_VectorArray, pos };
 	}
 	template <class T>
-	DATO_FORCEINLINE ValueRef WriteVectorArrayT(const T* values, u8 elemCount, u32 length)
+	DATO_FORCEINLINE ValueRef WriteVectorArrayT(const T* values, u16 elemCount, u32 length)
 	{
 		return WriteVectorArrayRaw(values, SubtypeInfo<T>::Subtype, sizeof(T), elemCount, length);
 	}

@@ -203,7 +203,7 @@ VECTOR(T) =
 	ALIGN(T - 2)
 	# <- start (where references point to)
 	subtype = SUBTYPE
-	vecsize = uint8 # must be >= 1
+	vecsize = VECSIZE
 	data = T[vecsize]
 }
 
@@ -212,10 +212,14 @@ VECTOR-ARRAY(T) =
 	ALIGN((SIZE(VECTOR-ARRAY), T) - 2) # for mixed-value sizes, the alignment must take into account all the values
 	# <- start (where references point to)
 	subtype = SUBTYPE
-	vecsize = uint8 # must be >= 1
+	vecsize = VECSIZE
 	count = SIZE(VECTOR-ARRAY)
 	values = T[vecsize * count]
 }
+
+VECSIZE = uint8
+# allowed count range: [1;255]
+# 0 is reserved as it may represent 256 in the future
 
 VALUE = int32 | uint32 | float32 | VREF(int64 | uint64 | float64 | ARRAY | MAP | TYPED-ARRAY | VECTOR | VECTOR-ARRAY)
 

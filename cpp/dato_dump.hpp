@@ -197,7 +197,8 @@ struct IValueDumperIterator : IValueIterator
 	}
 	void OnValueByteArray(const void* data, u32 length) override
 	{
-		PrintText("bytearray:", 10);
+		char bfr[32];
+		PrintText(bfr, snprintf(bfr, 32, "bytearray [%u]:", unsigned(length)));
 		for (u32 i = 0; i < length; i++)
 		{
 			u8 v = ((const u8*) data)[i];

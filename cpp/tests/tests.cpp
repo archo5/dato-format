@@ -59,7 +59,7 @@ static bool CheckEntries(dato::IntMapEntry* entries, unsigned count, int line)
 
 void TestSortingInt()
 {
-	puts("testing sorting (int)");
+	puts("----- testing sorting (int) -----");
 	using namespace dato;
 
 	TempMem tm;
@@ -138,7 +138,7 @@ static void CheckSorting(const char* start, int line)
 
 void TestSortingString()
 {
-	puts("testing sorting (string)");
+	puts("----- testing sorting (string) -----");
 	using namespace dato;
 
 #define SORT_TEST(start) CheckSorting(start, __LINE__)
@@ -196,7 +196,7 @@ std::string ToUnderscoreSeparated(const std::string& orig)
 
 void TestBasicHashCollisions()
 {
-	puts("testing hashes of basic names for collisions");
+	puts("----- testing hashes of basic names for collisions -----");
 	// tests the fundamental efficiency of key deduplication (which isn't too important)
 	// but this list can also be used to test custom hashes that could be used with int keys
 	// (this also indicates that MemHash/StrHash are safe to use for that purpose)
@@ -661,27 +661,6 @@ void TestBasicStructures()
 
 	// vector
 	{
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::s8>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(12), 0, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::u8>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(12), 1, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::s16>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(12), 2, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::u16>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(12), 3, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::s32>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(14), A(2), 4, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::u32>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(14), A(2), 5, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::s64>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(14), A(2), 6, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::u64>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(14), A(2), 7, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::f32>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(14), A(2), 8, 0));
-		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::f64>(nullptr, 0)); },
-			EB(EBCFG0PFX(15), U(14), A(2), 9, 0));
-
 		WRTEST({ dato::s8 data[] = V({ 100, -50, -100 });
 			wr.SetRoot(wr.WriteVectorT(data, 3)); },
 			EB(EBCFG0PFX(15), U(12), 0, 3, 100, -50, -100));
