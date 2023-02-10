@@ -237,6 +237,8 @@ inline u32 WriteSizeU16(Builder& B, u32 val, u32 align, const void* prefix, u32 
 	u32 pos = B.GetSize();
 	if (align != 0)
 	{
+		if (align < 2)
+			align = 2;
 		u32 totalsize = 2 + pfxsize;
 		pos = RoundUp(pos + totalsize, align) - totalsize;
 		B.AddZeroesUntil(pos);
@@ -252,6 +254,8 @@ inline u32 WriteSizeU32(Builder& B, u32 val, u32 align, const void* prefix, u32 
 	u32 pos = B.GetSize();
 	if (align != 0)
 	{
+		if (align < 4)
+			align = 4;
 		u32 totalsize = 4 + pfxsize;
 		pos = RoundUp(pos + totalsize, align) - totalsize;
 		B.AddZeroesUntil(pos);
@@ -281,6 +285,8 @@ inline u32 WriteSizeU8X32(Builder& B, u32 val, u32 align, const void* prefix, u3
 	{
 		if (align != 0)
 		{
+			if (align < 4)
+				align = 4;
 			u32 totalsize = 5 + pfxsize;
 			pos = RoundUp(pos + totalsize, align) - totalsize;
 			B.AddZeroesUntil(pos);
@@ -609,7 +615,8 @@ struct WriterBase : Builder
 
 	ValueRef WriteVectorRaw(const void* data, u8 subtype, u8 sizeAlign, u8 elemCount)
 	{
-		AddZeroesUntil(RoundUp(GetSize() + 2, sizeAlign) - 2);
+		if (_flags & FLAG_Aligned)
+			AddZeroesUntil(RoundUp(GetSize() + 2, sizeAlign) - 2);
 		u32 pos = GetSize();
 		AddByte(subtype);
 		AddByte(elemCount);
@@ -989,7 +996,14 @@ struct Writer : WriterBase
 		AddZeroes(2);
 		return { TYPE_String16, pos };
 	}
-	DATO_FORCEINLINE ValueRef WriteString16(const char* str) { return WriteString16(str, StrLen(str)); }
+	DATO_FORCEINLINE ValueRef WriteString16(const u16* str) { return WriteString16(str, StrLen(str)); }
+	DATO_FORCEINLINE ValueRef WriteString16(const char16_t* str, u32 size)
+	{
+		static_assert(sizeof(u16) == sizeof(char16_t), "unexpected type size difference");
+		return WriteString16((const u16*) str, size);
+	}
+	DATO_FORCEINLINE ValueRef WriteString16(const char16_t* str)
+	{ return WriteString16(str, StrLen(str)); }
 
 	ValueRef WriteString32(const u32* str, u32 size)
 	{
@@ -998,7 +1012,14 @@ struct Writer : WriterBase
 		AddZeroes(4);
 		return { TYPE_String32, pos };
 	}
-	DATO_FORCEINLINE ValueRef WriteString32(const char* str) { return WriteString32(str, StrLen(str)); }
+	DATO_FORCEINLINE ValueRef WriteString32(const u32* str) { return WriteString32(str, StrLen(str)); }
+	DATO_FORCEINLINE ValueRef WriteString32(const char32_t* str, u32 size)
+	{
+		static_assert(sizeof(u32) == sizeof(char32_t), "unexpected type size difference");
+		return WriteString32((const u32*) str, size);
+	}
+	DATO_FORCEINLINE ValueRef WriteString32(const char32_t* str)
+	{ return WriteString32(str, StrLen(str)); }
 
 	ValueRef WriteByteArray(const void* data, u32 size, u32 align = 0)
 	{
@@ -1010,9 +1031,14 @@ struct Writer : WriterBase
 	ValueRef WriteVectorArrayRaw(const void* data, u8 subtype, u8 sizeAlign, u8 elemCount, u32 length)
 	{
 		u8 prefix[] = { subtype, elemCount };
-		u32 pos = Config::WriteValueLength(*this, length, Align(sizeAlign), prefix, sizeof(prefix));
-		AddMem(values, sizeAlign * elemCount * length);
-		return pos;
+		u32 pos = Config::WriteValueLength(
+			*this,
+			length,
+			Align(length ? sizeAlign : 1),
+			prefix,
+			sizeof(prefix));
+		AddMem(data, sizeAlign * elemCount * length);
+		return { TYPE_VectorArray, pos };
 	}
 	template <class T>
 	DATO_FORCEINLINE ValueRef WriteVectorArrayT(const T* values, u8 elemCount, u32 length)

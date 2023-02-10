@@ -156,6 +156,24 @@ template <class T> DATO_FORCEINLINE inline T ReadT(const void* ptr)
 }
 #endif
 
+inline u32 SubtypeGetSize(u8 subtype)
+{
+	switch (subtype)
+	{
+	case SUBTYPE_S8: return 1;
+	case SUBTYPE_U8: return 1;
+	case SUBTYPE_S16: return 2;
+	case SUBTYPE_U16: return 2;
+	case SUBTYPE_S32: return 4;
+	case SUBTYPE_U32: return 4;
+	case SUBTYPE_S64: return 8;
+	case SUBTYPE_U64: return 8;
+	case SUBTYPE_F32: return 4;
+	case SUBTYPE_F64: return 8;
+	default: return 0;
+	}
+}
+
 #define DATO_READSIZE_ARGS const char* data, u32 len, u32& pos
 #define DATO_READSIZE_PASS data, len, pos
 
@@ -315,6 +333,37 @@ struct ReaderAdaptiveConfig
 	u32 ReadObjectSize(DATO_READSIZE_ARGS) const { return objectSize(DATO_READSIZE_PASS); }
 	u32 ReadArrayLength(DATO_READSIZE_ARGS) const { return arrayLength(DATO_READSIZE_PASS); }
 	u32 ReadValueLength(DATO_READSIZE_ARGS) const { return valueLength(DATO_READSIZE_PASS); }
+};
+
+struct IValueIterator
+{
+	virtual void BeginMap(u8 type, u32 size) = 0;
+	virtual void EndMap(u8 type) = 0;
+	virtual void BeginStringKey(const char* key, u32 length) = 0;
+	virtual void EndStringKey() = 0;
+	virtual void BeginIntKey(u32 key) = 0;
+	virtual void EndIntKey() = 0;
+
+	virtual void BeginArray(u32 size) = 0;
+	virtual void EndArray() = 0;
+	virtual void BeginArrayIndex(u32 i) = 0;
+	virtual void EndArrayIndex() = 0;
+
+	virtual void OnValueNull() = 0;
+	virtual void OnValueBool(bool value) = 0;
+	virtual void OnValueS32(s32 value) = 0;
+	virtual void OnValueU32(u32 value) = 0;
+	virtual void OnValueF32(f32 value) = 0;
+	virtual void OnValueS64(s64 value) = 0;
+	virtual void OnValueU64(u64 value) = 0;
+	virtual void OnValueF64(f64 value) = 0;
+	virtual void OnValueString(const char* data, u32 length) = 0;
+	virtual void OnValueString(const u16* data, u32 length) = 0;
+	virtual void OnValueString(const u32* data, u32 length) = 0;
+	virtual void OnValueByteArray(const void* data, u32 length) = 0;
+	virtual void OnValueVector(u8 subtype, u8 elemCount, const void* data) = 0;
+	virtual void OnValueVectorArray(u8 subtype, u8 elemCount, const void* data, u32 length) = 0;
+	virtual void OnUnknownValue(u8 type, u32 embedded, const char* buffer, u32 length) = 0;
 };
 
 template <class Config>
@@ -506,6 +555,22 @@ public:
 			}
 			return {};
 		}
+
+		void Iterate(IValueIterator& it)
+		{
+			it.BeginMap(TYPE_StringMap, this->_size);
+			for (u32 i = 0; i < this->_size; i++)
+			{
+				u32 keyLength;
+				const char* key = GetKeyCStr(i, &keyLength);
+				it.BeginStringKey(key, keyLength);
+				{
+					this->GetValueByIndex(i).Iterate(it);
+				}
+				it.EndStringKey();
+			}
+			it.EndMap(TYPE_StringMap);
+		}
 	};
 	struct IntMapAccessor : MapAccessor
 	{
@@ -525,31 +590,31 @@ public:
 		using MapAccessor::MapAccessor;
 
 		Iterator begin() const { return { this, 0 }; }
-		Iterator end() const { return { this, _size }; }
+		Iterator end() const { return { this, this->_size }; }
 
 		DATO_FORCEINLINE Iterator operator [](size_t i) const
 		{
-			DATO_INPUT_EXPECT(i < _size);
+			DATO_INPUT_EXPECT(i < this->_size);
 			return { this, i };
 		}
 
 		// retrieving keys
 		u32 GetKey(size_t i) const
 		{
-			DATO_INPUT_EXPECT(i < _size);
-			return _r->RD<u32>(_objpos + i * 4);
+			DATO_INPUT_EXPECT(i < this->_size);
+			return this->_r->template RD<u32>(this->_objpos + i * 4);
 		}
 
 		// searching for values
 		DynamicAccessor FindValueByKey(u32 keyToFind) const
 		{
-			if (_r->_flags & FLAG_SortedKeys)
+			if (this->_r->_flags & FLAG_SortedKeys)
 			{
-				u32 L = 0, R = _size;
+				u32 L = 0, R = this->_size;
 				while (L < R)
 				{
 					u32 M = (L + R) / 2;
-					u32 keyM = _r->RD<u32>(_objpos + i * 4);
+					u32 keyM = this->_r->template RD<u32>(this->_objpos + i * 4);
 					if (keyToFind == keyM)
 						return GetValueByIndex(M);
 					if (keyToFind < keyM)
@@ -560,14 +625,28 @@ public:
 			}
 			else
 			{
-				for (u32 i = 0; i < _size; i++)
+				for (u32 i = 0; i < this->_size; i++)
 				{
-					u32 key = _r->RD<u32>(_objpos + i * 4);
+					u32 key = this->_r->template RD<u32>(this->_objpos + i * 4);
 					if (key == keyToFind)
 						return GetValueByIndex(i);
 				}
 			}
 			return {};
+		}
+
+		void Iterate(IValueIterator& it)
+		{
+			it.BeginMap(TYPE_StringMap, this->_size);
+			for (u32 i = 0; i < this->_size; i++)
+			{
+				it.BeginIntKey(GetKey(i));
+				{
+					this->GetValueByIndex(i).Iterate(it);
+				}
+				it.EndIntKey();
+			}
+			it.EndMap(TYPE_StringMap);
 		}
 	};
 	struct ArrayAccessor
@@ -611,13 +690,27 @@ public:
 		DynamicAccessor GetValueByIndex(size_t i) const
 		{
 			DATO_INPUT_EXPECT(i < _size);
-			u32 vpos = _arrpos + _size * 4 + i * 4;
-			u32 tpos = _arrpos + _size * 8 + i;
+			u32 vpos = _arrpos + i * 4;
+			u32 tpos = _arrpos + _size * 4 + i;
 			u32 val = _r->RD<u32>(vpos);
 			u8 type = _r->RD<u8>(tpos);
 			if (_r->_flags & FLAG_RelContValRefs && IsReferenceType(type))
 				val = _arrpos - val;
 			return { _r, val, type };
+		}
+
+		void Iterate(IValueIterator& it)
+		{
+			it.BeginArray(_size);
+			for (u32 i = 0; i < _size; i++)
+			{
+				it.BeginArrayIndex(i);
+				{
+					GetValueByIndex(i).Iterate(it);
+				}
+				it.EndArrayIndex();
+			}
+			it.EndArray();
 		}
 	};
 	template <class T>
@@ -652,10 +745,20 @@ public:
 	struct ByteArrayAccessor : TypedArrayAccessor<char>
 	{
 		using TypedArrayAccessor<char>::TypedArrayAccessor;
+
+		void Iterate(IValueIterator& it)
+		{
+			it.OnValueByteArray(this->_data, this->_size);
+		}
 	};
 	template <class T> struct StringAccessor : TypedArrayAccessor<T>
 	{
 		using TypedArrayAccessor<T>::TypedArrayAccessor;
+
+		void Iterate(IValueIterator& it)
+		{
+			it.OnValueString(this->_data, this->_size);
+		}
 	};
 	template <class T>
 	struct VectorAccessor
@@ -677,6 +780,11 @@ public:
 		DATO_FORCEINLINE u8 GetElementCount() const { return _elemCount; }
 
 		DATO_FORCEINLINE T operator [](size_t i) const { return ReadT<T>(&_data[i]); }
+
+		void Iterate(IValueIterator& it)
+		{
+			it.OnValueVector(_subtype, _elemCount, _data);
+		}
 	};
 	template <class T>
 	struct VectorArrayAccessor
@@ -719,6 +827,11 @@ public:
 		DATO_FORCEINLINE Iterator end() const { return { _data + _size * _elemCount }; }
 
 		DATO_FORCEINLINE T operator [](size_t i) const { return ReadT<T>(&_data[i]); }
+
+		void Iterate(IValueIterator& it)
+		{
+			it.OnValueVectorArray(_subtype, _elemCount, _data, _size);
+		}
 	};
 	struct DynamicAccessor
 	{
@@ -732,6 +845,44 @@ public:
 
 		DATO_FORCEINLINE bool IsValid() const { return !!_r; }
 		DATO_FORCEINLINE operator const void* () const { return _r; } // to support `if (init)` exprs
+
+		void Iterate(IValueIterator& it)
+		{
+			switch (_type)
+			{
+			case TYPE_Null: it.OnValueNull(); break;
+			case TYPE_Bool: it.OnValueBool(AsBool()); break;
+			case TYPE_S32: it.OnValueS32(AsS32()); break;
+			case TYPE_U32: it.OnValueU32(AsU32()); break;
+			case TYPE_F32: it.OnValueF32(AsF32()); break;
+			case TYPE_S64: it.OnValueS64(AsS64()); break;
+			case TYPE_U64: it.OnValueU64(AsU64()); break;
+			case TYPE_F64: it.OnValueF64(AsF64()); break;
+			case TYPE_Array: AsArray().Iterate(it); break;
+			case TYPE_StringMap: AsStringMap().Iterate(it); break;
+			case TYPE_IntMap: AsIntMap().Iterate(it); break;
+			case TYPE_String8: AsString8().Iterate(it); break;
+			case TYPE_String16: AsString16().Iterate(it); break;
+			case TYPE_String32: AsString32().Iterate(it); break;
+			case TYPE_ByteArray: AsByteArray().Iterate(it); break;
+			case TYPE_Vector: {
+				DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
+				u8 subtype = _r->RD<u8>(_pos);
+				u8 elemCount = _r->RD<u8>(_pos + 1);
+				it.OnValueVector(subtype, elemCount, _r->_data + _pos + 2);
+				break; }
+			case TYPE_VectorArray: {
+				DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
+				u32 vpos = _pos;
+				u8 subtype = _r->RD<u8>(vpos++);
+				u8 elemCount = _r->RD<u8>(vpos++);
+				u32 _size = _r->_cfg.ReadValueLength(_r->_data, _r->_len, vpos);
+				DATO_BUFFER_EXPECT(vpos + SubtypeGetSize(subtype) * elemCount * _size <= _r->_len);
+				it.OnValueVectorArray(subtype, elemCount, _r->_data + vpos, _size);
+				break; }
+			default: it.OnUnknownValue(_type, _pos, _r->_data, _r->_len); break;
+			}
+		}
 
 		// reading type info
 		DATO_FORCEINLINE u8 GetType() const { return _type; }
@@ -783,7 +934,7 @@ public:
 		DATO_FORCEINLINE bool AsBool() const { DATO_INPUT_EXPECT(_type == TYPE_Bool); return _pos != 0; }
 		DATO_FORCEINLINE s32 AsS32() const { DATO_INPUT_EXPECT(_type == TYPE_S32); return _pos; }
 		DATO_FORCEINLINE u32 AsU32() const { DATO_INPUT_EXPECT(_type == TYPE_U32); return _pos; }
-		DATO_FORCEINLINE float AsF32() const { DATO_INPUT_EXPECT(_type == TYPE_U32); return ReadT<float>(&_pos); }
+		DATO_FORCEINLINE float AsF32() const { DATO_INPUT_EXPECT(_type == TYPE_F32); return ReadT<float>(&_pos); }
 		DATO_FORCEINLINE s64 AsS64() const { DATO_INPUT_EXPECT(_type == TYPE_S64); return _r->RD<s64>(_pos); }
 		DATO_FORCEINLINE u64 AsU64() const { DATO_INPUT_EXPECT(_type == TYPE_U64); return _r->RD<u64>(_pos); }
 		DATO_FORCEINLINE double AsF64() const { DATO_INPUT_EXPECT(_type == TYPE_F64); return _r->RD<double>(_pos); }

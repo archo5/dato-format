@@ -1,6 +1,7 @@
 
 #include "../dato_reader.hpp"
 #include "../dato_writer.hpp"
+#include "../dato_dump.hpp"
 
 #include <initializer_list>
 #include <stdio.h>
@@ -439,16 +440,49 @@ void TestMemReuseHashTable()
 
 struct EBElement
 {
+	enum Type
+	{
+		Align,
+		Inline,
+		String8,
+		String16,
+		String32,
+	};
+
+	Type type;
 	int size;
-	dato::u64 value;
-	const char* str;
-	EBElement(const char* s) : size(strlen(s)), value(0), str(s) {}
-	EBElement(int b) : size(1), value(b), str(nullptr) {}
-	EBElement(int s, dato::u64 v) : size(s), value(v), str(nullptr) {}
+	union
+	{
+		dato::u64 value;
+		const char* str;
+		const char16_t* str16;
+		const char32_t* str32;
+	};
+
+	EBElement(int b) : type(Inline), size(1), value(b) {}
+	//EBElement(int s, dato::u64 v) : type(Inline), size(s), value(v) {}
+	EBElement(Type t, int s, dato::u64 v) : type(t), size(s), value(v) {}
+	EBElement(const char* s, int sz = -1) :
+		type(String8),
+		size(sz >= 0 ? sz : dato::StrLen(s) + 1),
+		str(s)
+	{}
+	EBElement(const char16_t* s, int sz = -1) :
+		type(String16),
+		size(sz >= 0 ? sz : dato::StrLen(s) + 1),
+		str16(s)
+	{}
+	EBElement(const char32_t* s, int sz = -1) :
+		type(String32),
+		size(sz >= 0 ? sz : dato::StrLen(s) + 1),
+		str32(s)
+	{}
 };
 
-EBElement U(dato::u32 v) { return EBElement(4, v); }
-EBElement UU(dato::u64 v) { return EBElement(8, v); }
+EBElement A(int a) { return EBElement(EBElement::Align, a, 0); }
+EBElement u(dato::u16 v) { return EBElement(EBElement::Inline, 2, v); }
+EBElement U(dato::u32 v) { return EBElement(EBElement::Inline, 4, v); }
+EBElement UU(dato::u64 v) { return EBElement(EBElement::Inline, 8, v); }
 
 EBElement F(dato::f32 v)
 {
@@ -502,15 +536,30 @@ struct ExpectationBuilder
 	{
 		for (const EBElement& e : elements)
 		{
-			if (e.str)
+			if (e.type == EBElement::Inline)
+			{
+				memcpy(bfr + len, &e.value, e.size);
+				len += e.size;
+			}
+			else if (e.type == EBElement::Align)
+			{
+				for (int i = 0; i < e.size; i++)
+					bfr[len++] = 0;
+			}
+			else if (e.type == EBElement::String8)
 			{
 				memcpy(bfr + len, e.str, e.size);
 				len += e.size;
 			}
-			else
+			else if (e.type == EBElement::String16)
 			{
-				memcpy(bfr + len, &e.value, e.size);
-				len += e.size;
+				memcpy(bfr + len, e.str16, e.size * 2);
+				len += e.size * 2;
+			}
+			else if (e.type == EBElement::String32)
+			{
+				memcpy(bfr + len, e.str32, e.size * 4);
+				len += e.size * 4;
 			}
 		}
 	}
@@ -528,14 +577,16 @@ struct ExpectationBuilder
 	dato::UniversalBufferReader ubr; \
 	CHECK_TRUE(ubr.Init(wr.GetData(), wr.GetSize())); \
 	auto root = ubr.GetRoot(); \
-	printf("- root type=%d\n", int(root.GetType())); \
+	dato::FILEValueDumperIterator it(stdout); \
+	root.Iterate(it); \
+	puts(""); /*printf("- root type=%d\n", int(root.GetType()));*/ \
 }
 
-#define EBCFG0PFX(t) "DATO", 0, 0x7, t, 0
+#define EBCFG0PFX(t) EBElement("DATO", 4), 0, 0x7, t, A(1)
 
 void TestBasicStructures()
 {
-	puts("testing basic structures");
+	puts("----- testing basic structures -----");
 
 	WRTEST({ wr.SetRoot(wr.WriteNull()); },
 		EB(EBCFG0PFX(0), U(0)));
@@ -572,7 +623,7 @@ void TestBasicStructures()
 		e.key = wr.WriteStringKey("abc");
 		e.value = wr.WriteU32(1234);
 		wr.SetRoot(wr.WriteStringMap(&e, 1)); },
-		EB(EBCFG0PFX(9), U(20), U(3), "abc", 0, U(1), U(12), U(1234), 3));
+		EB(EBCFG0PFX(9), U(20), U(3), "abc", U(1), U(12), U(1234), 3));
 
 	// int map
 	WRTEST({ wr.SetRoot(wr.WriteIntMap(nullptr, 0)); },
@@ -583,6 +634,140 @@ void TestBasicStructures()
 		e.value = wr.WriteU32(12345);
 		wr.SetRoot(wr.WriteIntMap(&e, 1)); },
 		EB(EBCFG0PFX(10), U(12), U(1), U(0xfefdfcfb), U(12345), 3));
+
+	// string8
+	WRTEST({ wr.SetRoot(wr.WriteString8("")); },
+		EB(EBCFG0PFX(11), U(12), U(0), 0));
+	WRTEST({ wr.SetRoot(wr.WriteString8("abc")); },
+		EB(EBCFG0PFX(11), U(12), U(3), "abc"));
+
+	// string16
+	WRTEST({ wr.SetRoot(wr.WriteString16(u"")); },
+		EB(EBCFG0PFX(12), U(12), U(0), 0, 0));
+	WRTEST({ wr.SetRoot(wr.WriteString16(u"abcd")); },
+		EB(EBCFG0PFX(12), U(12), U(4), u"abcd"));
+
+	// string32
+	WRTEST({ wr.SetRoot(wr.WriteString32(U"")); },
+		EB(EBCFG0PFX(13), U(12), U(0), U(0)));
+	WRTEST({ wr.SetRoot(wr.WriteString32(U"abcde")); },
+		EB(EBCFG0PFX(13), U(12), U(5), U"abcde"));
+
+	// bytearray
+	WRTEST({ wr.SetRoot(wr.WriteByteArray(nullptr, 0)); },
+		EB(EBCFG0PFX(14), U(12), U(0)));
+	WRTEST({ wr.SetRoot(wr.WriteByteArray("a\0c$\xfe""f", 6)); },
+		EB(EBCFG0PFX(14), U(12), U(6), { "a\0c$\xfe""f", 6 }));
+
+	// vector
+	{
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::s8>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(12), 0, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::u8>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(12), 1, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::s16>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(12), 2, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::u16>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(12), 3, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::s32>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 4, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::u32>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 5, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::s64>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 6, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::u64>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 7, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::f32>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 8, 0));
+		WRTEST({ wr.SetRoot(wr.WriteVectorT<dato::f64>(nullptr, 0)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 9, 0));
+
+		WRTEST({ dato::s8 data[] = V({ 100, -50, -100 });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(12), 0, 3, 100, -50, -100));
+		WRTEST({ dato::u8 data[] = V({ 100, 150, 200 });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(12), 1, 3, 100, 150, 200));
+		WRTEST({ dato::s16 data[] = V({ 1000, -500, -1000 });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(12), 2, 3, u(1000), u(-500), u(-1000)));
+		WRTEST({ dato::u16 data[] = V({ 1000, 1500, 2000 });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(12), 3, 3, u(1000), u(1500), u(2000)));
+		WRTEST({ dato::s32 data[] = V({ 100000, -50000, -100000 });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 4, 3, U(100000), U(-50000), U(-100000)));
+		WRTEST({ dato::u32 data[] = V({ 100000, 150000, 200000 });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 5, 3, U(100000), U(150000), U(200000)));
+		WRTEST({ dato::s64 data[] = V({ 10000000000, -5000000000, -10000000000 });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 6, 3, UU(10000000000), UU(-5000000000), UU(-10000000000)));
+		WRTEST({ dato::u64 data[] = V({ 10000000000, 15000000000, 20000000000 });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 7, 3, UU(10000000000), UU(15000000000), UU(20000000000)));
+		WRTEST({ dato::f32 data[] = V({ 0.0125f, -1.5f, 2048.0f });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 8, 3, F(0.0125f), F(-1.5f), F(2048.0f)));
+		WRTEST({ dato::f64 data[] = V({ 0.0125f, -1.5f, 2048.0f });
+			wr.SetRoot(wr.WriteVectorT(data, 3)); },
+			EB(EBCFG0PFX(15), U(14), A(2), 9, 3, FF(0.0125f), FF(-1.5f), FF(2048.0f)));
+	}
+
+	// vector array
+	{
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::s8>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 0, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::u8>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 1, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::s16>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 2, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::u16>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 3, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::s32>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 4, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::u32>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 5, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::s64>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 6, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::u64>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 7, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::f32>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 8, 3, U(0)));
+		WRTEST({ wr.SetRoot(wr.WriteVectorArrayT<dato::f64>(nullptr, 3, 0)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 9, 3, U(0)));
+
+		WRTEST({ dato::s8 data[] = V({ 100, -50, -100 });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 0, 3, U(1), 100, -50, -100));
+		WRTEST({ dato::u8 data[] = V({ 100, 150, 200 });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 1, 3, U(1), 100, 150, 200));
+		WRTEST({ dato::s16 data[] = V({ 1000, -500, -1000 });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 2, 3, U(1), u(1000), u(-500), u(-1000)));
+		WRTEST({ dato::u16 data[] = V({ 1000, 1500, 2000 });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 3, 3, U(1), u(1000), u(1500), u(2000)));
+		WRTEST({ dato::s32 data[] = V({ 100000, -50000, -100000 });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 4, 3, U(1), U(100000), U(-50000), U(-100000)));
+		WRTEST({ dato::u32 data[] = V({ 100000, 150000, 200000 });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 5, 3, U(1), U(100000), U(150000), U(200000)));
+		WRTEST({ dato::s64 data[] = V({ 10000000000, -5000000000, -10000000000 });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(18), A(6), 6, 3, U(1), UU(10000000000), UU(-5000000000), UU(-10000000000)));
+		WRTEST({ dato::u64 data[] = V({ 10000000000, 15000000000, 20000000000 });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(18), A(6), 7, 3, U(1), UU(10000000000), UU(15000000000), UU(20000000000)));
+		WRTEST({ dato::f32 data[] = V({ 0.0125f, -1.5f, 2048.0f });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(14), A(2), 8, 3, U(1), F(0.0125f), F(-1.5f), F(2048.0f)));
+		WRTEST({ dato::f64 data[] = V({ 0.0125f, -1.5f, 2048.0f });
+			wr.SetRoot(wr.WriteVectorArrayT(data, 3, 1)); },
+			EB(EBCFG0PFX(16), U(18), A(6), 9, 3, U(1), FF(0.0125f), FF(-1.5f), FF(2048.0f)));
+	}
 
 	puts("-----");
 	puts("");
