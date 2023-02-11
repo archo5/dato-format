@@ -3,7 +3,6 @@
 #include "dato_reader.hpp"
 
 #include <stdio.h>
-#include <string.h>
 
 
 namespace dato {
@@ -38,7 +37,10 @@ struct IValueDumperIterator : IValueIterator
 	// helpers
 	void _WriteIndent()
 	{
-		u32 len = strlen(indentText);
+		const char* ite = indentText;
+		while (*ite)
+			ite++;
+		u32 len = u32(ite - indentText);
 		for (int i = 0; i < _indent; i++)
 			PrintText(indentText, len);
 	}
@@ -59,6 +61,7 @@ struct IValueDumperIterator : IValueIterator
 	}
 	void EndMap(u8 type) override
 	{
+		(void)type;
 		_indent--;
 		_WriteIndent();
 		PrintText("}", 1);
@@ -276,6 +279,8 @@ struct IValueDumperIterator : IValueIterator
 	}
 	void OnUnknownValue(u8 type, u32 embedded, const char* buffer, u32 length) override
 	{
+		(void)buffer;
+		(void)length;
 		char bfr[48];
 		u32 len = snprintf(bfr, 48, "unknown (type=%u, data=%u)", unsigned(type), unsigned(embedded));
 		PrintText(bfr, len);

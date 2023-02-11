@@ -4,3 +4,4 @@
 *.ilk
 *.pdb
 *.exe
+*.gen.*

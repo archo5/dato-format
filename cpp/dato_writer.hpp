@@ -157,7 +157,7 @@ template <class T> inline u32 StrLen(const T* str)
 	const T* p = str;
 	while (*p)
 		p++;
-	return p - str;
+	return u32(p - str);
 }
 
 struct Builder
@@ -221,7 +221,7 @@ struct Builder
 		_size += size;
 	}
 
-	void SetError_ValueOutOfRange();
+	void SetError_ValueOutOfRange() { /* TODO */ }
 };
 
 inline u32 WriteSizeU8(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
@@ -240,7 +240,7 @@ inline u32 WriteSizeU8(Builder& B, u32 val, u32 align, const void* prefix, u32 p
 	}
 	if (pfxsize)
 		B.AddMem(prefix, pfxsize);
-	B.AddByte(val);
+	B.AddByte(u8(val));
 	return pos;
 }
 
@@ -296,7 +296,7 @@ inline u32 WriteSizeU8X32(Builder& B, u32 val, u32 align, const void* prefix, u3
 		}
 		if (pfxsize)
 			B.AddMem(prefix, pfxsize);
-		B.AddByte(val);
+		B.AddByte(u8(val));
 	}
 	else
 	{
@@ -637,7 +637,7 @@ struct WriterBase : Builder
 			AddZeroesUntil(RoundUp(GetSize() + 2, sizeAlign) - 2);
 		u32 pos = GetSize();
 		AddByte(subtype);
-		AddByte(elemCount);
+		AddByte(u8(elemCount));
 		AddMem(data, sizeAlign * elemCount);
 		return { TYPE_Vector, pos };
 	}
@@ -650,22 +650,22 @@ struct WriterBase : Builder
 
 struct TempMem
 {
-	void* data = nullptr;
-	u32 size = 0;
+	void* _data = nullptr;
+	u32 _size = 0;
 
 	~TempMem()
 	{
-		DATO_FREE(data);
+		DATO_FREE(_data);
 	}
 	void* GetDataBytes(u32 atLeast)
 	{
-		if (size < atLeast)
+		if (_size < atLeast)
 		{
-			size += atLeast;
-			DATO_FREE(data);
-			data = DATO_MALLOC(size);
+			_size += atLeast;
+			DATO_FREE(_data);
+			_data = DATO_MALLOC(_size);
 		}
-		return data;
+		return _data;
 	}
 	template <class T>
 	DATO_FORCEINLINE T* GetData(u32 atLeast)

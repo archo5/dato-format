@@ -143,12 +143,12 @@ inline u32 RoundUp(u32 x, u32 n)
 #if DATO_FAST_UNSAFE
 // only for use with aligned data or platforms that support unaligned loads (x86/x64/ARM64)
 // not guaranteed to work correctly if strict aliasing is enabled in compiler options!
-template <class T> DATO_FORCEINLINE static T ReadT(const void* ptr)
+template <class T> DATO_FORCEINLINE T ReadT(const void* ptr)
 {
 	return *(const T*)ptr;
 }
 #else
-template <class T> DATO_FORCEINLINE inline T ReadT(const void* ptr)
+template <class T> DATO_FORCEINLINE T ReadT(const void* ptr)
 {
 	T v;
 	DATO_MEMCPY(&v, ptr, sizeof(T));
@@ -179,12 +179,14 @@ inline u32 SubtypeGetSize(u8 subtype)
 
 inline u32 ReadSizeU8(DATO_READSIZE_ARGS)
 {
+	(void)len;
 	DATO_BUFFER_EXPECT(pos + 1 <= len);
 	return u8(data[pos++]);
 }
 
 inline u32 ReadSizeU16(DATO_READSIZE_ARGS)
 {
+	(void)len;
 	DATO_BUFFER_EXPECT(pos + 2 <= len);
 	u32 v = ReadT<u16>(data + pos);
 	pos += 2;
@@ -193,6 +195,7 @@ inline u32 ReadSizeU16(DATO_READSIZE_ARGS)
 
 inline u32 ReadSizeU32(DATO_READSIZE_ARGS)
 {
+	(void)len;
 	DATO_BUFFER_EXPECT(pos + 4 <= len);
 	u32 v = ReadT<u32>(data + pos);
 	pos += 4;
@@ -201,6 +204,7 @@ inline u32 ReadSizeU32(DATO_READSIZE_ARGS)
 
 inline u32 ReadSizeU8X32(DATO_READSIZE_ARGS)
 {
+	(void)len;
 	DATO_BUFFER_EXPECT(pos + 1 <= len);
 	u32 v = u8(data[pos++]);
 	if (v == 255)
@@ -401,7 +405,7 @@ private:
 	int KeyCompare(u32 kpos, const void* mem, size_t lenMem) const
 	{
 		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
-		u32 testLen = len < lenMem ? len : lenMem;
+		u32 testLen = u32(len < lenMem ? len : lenMem);
 		if (int bc = DATO_MEMCMP(mem, &_data[kpos], testLen))
 			return bc;
 		if (lenMem == len)
@@ -437,8 +441,8 @@ public:
 		DynamicAccessor GetValueByIndex(size_t i) const
 		{
 			DATO_INPUT_EXPECT(i < _size);
-			u32 vpos = _objpos + _size * 4 + i * 4;
-			u32 tpos = _objpos + _size * 8 + i;
+			u32 vpos = _objpos + _size * 4 + u32(i) * 4;
+			u32 tpos = _objpos + _size * 8 + u32(i);
 			u32 val = _r->RD<u32>(vpos);
 			u8 type = _r->RD<u8>(tpos);
 			if (_r->_flags & FLAG_RelContValRefs && IsReferenceType(type))
@@ -472,7 +476,7 @@ public:
 		DATO_FORCEINLINE Iterator operator [](size_t i) const
 		{
 			DATO_INPUT_EXPECT(i < this->_size);
-			return { this, i };
+			return { this, u32(i) };
 		}
 
 		// retrieving keys
@@ -480,7 +484,7 @@ public:
 		{
 			auto* BR = this->_r;
 			DATO_INPUT_EXPECT(i < this->_size);
-			u32 kpos = BR->template RD<u32>(this->_objpos + i * 4);
+			u32 kpos = BR->template RD<u32>(this->_objpos + u32(i) * 4);
 			u32 L = BR->_cfg.ReadKeyLength(BR->_data, BR->_len, kpos);
 			if (pOutLen)
 				*pOutLen = L;
@@ -595,14 +599,14 @@ public:
 		DATO_FORCEINLINE Iterator operator [](size_t i) const
 		{
 			DATO_INPUT_EXPECT(i < this->_size);
-			return { this, i };
+			return { this, u32(i) };
 		}
 
 		// retrieving keys
 		u32 GetKey(size_t i) const
 		{
 			DATO_INPUT_EXPECT(i < this->_size);
-			return this->_r->template RD<u32>(this->_objpos + i * 4);
+			return this->_r->template RD<u32>(this->_objpos + u32(i) * 4);
 		}
 
 		// searching for values
@@ -614,9 +618,9 @@ public:
 				while (L < R)
 				{
 					u32 M = (L + R) / 2;
-					u32 keyM = this->_r->template RD<u32>(this->_objpos + i * 4);
+					u32 keyM = this->_r->template RD<u32>(this->_objpos + M * 4);
 					if (keyToFind == keyM)
-						return GetValueByIndex(M);
+						return this->GetValueByIndex(M);
 					if (keyToFind < keyM)
 						R = M;
 					else
@@ -629,7 +633,7 @@ public:
 				{
 					u32 key = this->_r->template RD<u32>(this->_objpos + i * 4);
 					if (key == keyToFind)
-						return GetValueByIndex(i);
+						return this->GetValueByIndex(i);
 				}
 			}
 			return {};
@@ -690,8 +694,8 @@ public:
 		DynamicAccessor GetValueByIndex(size_t i) const
 		{
 			DATO_INPUT_EXPECT(i < _size);
-			u32 vpos = _arrpos + i * 4;
-			u32 tpos = _arrpos + _size * 4 + i;
+			u32 vpos = _arrpos + u32(i) * 4;
+			u32 tpos = _arrpos + _size * 4 + u32(i);
 			u32 val = _r->RD<u32>(vpos);
 			u8 type = _r->RD<u8>(tpos);
 			if (_r->_flags & FLAG_RelContValRefs && IsReferenceType(type))
@@ -732,7 +736,8 @@ public:
 		{
 			_size = r->_cfg.ReadValueLength(r->_data, r->_len, pos);
 			DATO_BUFFER_EXPECT(pos + sizeof(T) * _size <= r->_len);
-			_data = (const T*) (r->_data + pos);
+			// will not be dereferenced until ReadT but casting early for simplified code
+			_data = (const T*) (const void*) (r->_data + pos);
 		}
 
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
@@ -774,7 +779,8 @@ public:
 			DATO_INPUT_EXPECT(_subtype == SubtypeInfo<T>::Subtype);
 			_elemCount = r->RD<u8>(pos++);
 			DATO_BUFFER_EXPECT(pos + sizeof(T) * _elemCount <= r->_len);
-			_data = (const T*) (r->_data + pos);
+			// will not be dereferenced until ReadT but casting early for simplified code
+			_data = (const T*) (const void*) (r->_data + pos);
 		}
 
 		DATO_FORCEINLINE u8 GetElementCount() const { return _elemCount; }
@@ -817,14 +823,15 @@ public:
 			_elemCount = r->RD<u8>(pos++);
 			_size = r->_cfg.ReadValueLength(r->_data, r->_len, pos);
 			DATO_BUFFER_EXPECT(pos + sizeof(T) * _elemCount * _size <= r->_len);
-			_data = (const T*) (r->_data + pos);
+			// will not be dereferenced until ReadT but casting early for simplified code
+			_data = (const T*) (const void*) (r->_data + pos);
 		}
 
 		DATO_FORCEINLINE u8 GetElementCount() const { return _elemCount; }
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
 
-		DATO_FORCEINLINE Iterator begin() const { return { _data }; }
-		DATO_FORCEINLINE Iterator end() const { return { _data + _size * _elemCount }; }
+		DATO_FORCEINLINE Iterator begin() const { return { _data, _elemCount }; }
+		DATO_FORCEINLINE Iterator end() const { return { _data + _size * _elemCount, _elemCount }; }
 
 		DATO_FORCEINLINE T operator [](size_t i) const { return ReadT<T>(&_data[i]); }
 
@@ -890,13 +897,13 @@ public:
 		DATO_FORCEINLINE u8 GetSubtype() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_Vector || TYPE_VectorArray);
-			DATO_BUFFER_EXPECT(_pos + 2 <= _len);
+			DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 			return _r->RD<u8>(_pos);
 		}
 		DATO_FORCEINLINE u8 GetElementCount() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_Vector || TYPE_VectorArray);
-			DATO_BUFFER_EXPECT(_pos + 2 <= _len);
+			DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 			return _r->RD<u8>(_pos + 1);
 		}
 
@@ -905,7 +912,7 @@ public:
 		{
 			if (_type == TYPE_Vector)
 			{
-				DATO_BUFFER_EXPECT(_pos + 2 <= _len);
+				DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 				return _r->RD<u8>(_pos) == subtype
 					&& _r->RD<u8>(_pos + 1) == elemCount;
 			}
@@ -919,7 +926,7 @@ public:
 		{
 			if (_type == TYPE_VectorArray)
 			{
-				DATO_BUFFER_EXPECT(_pos + 2 <= _len);
+				DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 				return _r->RD<u8>(_pos) == subtype
 					&& _r->RD<u8>(_pos + 1) == elemCount;
 			}
