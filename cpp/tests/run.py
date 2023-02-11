@@ -91,6 +91,8 @@ def BUILDTEST(text):
 
 def run_test():
 	RUN("clang -o test.exe -Wall -g tests.cpp && test")
+def run_benchinternals():
+	RUN("clang -o benchinternals.exe -Wall -g -O2 benchinternals.cpp benchutil.cpp -lkernel32 && benchinternals")
 def run_bench():
 	RUN("clang -o bench.exe -Wall -g -O2 bench.cpp benchutil.cpp -lkernel32 && bench")
 
