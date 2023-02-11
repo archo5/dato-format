@@ -961,7 +961,7 @@ struct Writer : WriterBase
 			{
 				u32 vp = entries[i].value.pos;
 				if (IsReferenceType(entries[i].value.type))
-					vp -= basepos;
+					vp = basepos - vp;
 				AddU32(vp);
 			}
 		}
@@ -984,7 +984,7 @@ struct Writer : WriterBase
 			{
 				u32 vp = values[i].pos;
 				if (IsReferenceType(values[i].type))
-					vp -= basepos;
+					vp = basepos - vp;
 				AddU32(vp);
 			}
 		}

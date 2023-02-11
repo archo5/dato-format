@@ -93,8 +93,17 @@ def run_test():
 	RUN("clang -o test.exe -Wall -g tests.cpp && test")
 def run_benchinternals():
 	RUN("clang -o benchinternals.exe -Wall -g -O2 benchinternals.cpp benchutil.cpp -lkernel32 && benchinternals")
-def run_bench():
-	RUN("clang -o bench.exe -Wall -g -O2 bench.cpp benchutil.cpp -lkernel32 && bench")
+def run_benchfiles():
+	print("config=0")
+	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=0 && benchfiles gen-nodes")
+	print("config=1")
+	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=1 && benchfiles gen-nodes")
+	print("config=2")
+	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=2 && benchfiles gen-nodes")
+	print("config=3")
+	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=3 && benchfiles gen-nodes")
+	print("config=4")
+	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=4 && benchfiles gen-nodes")
 
 def run_buildtest():
 	print("=== running build tests ===")

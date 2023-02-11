@@ -641,7 +641,7 @@ public:
 
 		void Iterate(IValueIterator& it)
 		{
-			it.BeginMap(TYPE_StringMap, this->_size);
+			it.BeginMap(TYPE_IntMap, this->_size);
 			for (u32 i = 0; i < this->_size; i++)
 			{
 				it.BeginIntKey(GetKey(i));
@@ -650,7 +650,7 @@ public:
 				}
 				it.EndIntKey();
 			}
-			it.EndMap(TYPE_StringMap);
+			it.EndMap(TYPE_IntMap);
 		}
 	};
 	struct ArrayAccessor

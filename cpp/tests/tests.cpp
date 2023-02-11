@@ -614,6 +614,8 @@ void TestBasicStructures()
 		EB(EBCFG0PFX(8), U(12), U(0)));
 	WRTEST({ auto v = wr.WriteU32(123); wr.SetRoot(wr.WriteArray(&v, 1)); },
 		EB(EBCFG0PFX(8), U(12), U(1), U(123), 3));
+	WRTEST({ auto v = wr.WriteArray(nullptr, 0); wr.SetRoot(wr.WriteArray(&v, 1)); },
+		EB(EBCFG0PFX(8), U(16), U(0), U(1), U(8), 8));
 
 	// string map
 	WRTEST({ wr.SetRoot(wr.WriteStringMap(nullptr, 0)); },
@@ -624,6 +626,12 @@ void TestBasicStructures()
 		e.value = wr.WriteU32(1234);
 		wr.SetRoot(wr.WriteStringMap(&e, 1)); },
 		EB(EBCFG0PFX(9), U(20), U(3), "abc", U(1), U(12), U(1234), 3));
+	WRTEST({
+		dato::StringMapEntry e;
+		e.key = wr.WriteStringKey("abc");
+		e.value = wr.WriteArray(nullptr, 0);
+		wr.SetRoot(wr.WriteStringMap(&e, 1)); },
+		EB(EBCFG0PFX(9), U(24), U(3), "abc", U(0), U(1), U(12), U(8), 8));
 
 	// int map
 	WRTEST({ wr.SetRoot(wr.WriteIntMap(nullptr, 0)); },
@@ -634,6 +642,12 @@ void TestBasicStructures()
 		e.value = wr.WriteU32(12345);
 		wr.SetRoot(wr.WriteIntMap(&e, 1)); },
 		EB(EBCFG0PFX(10), U(12), U(1), U(0xfefdfcfb), U(12345), 3));
+	WRTEST({
+		dato::IntMapEntry e;
+		e.key = 0xfefdfcfb;
+		e.value = wr.WriteArray(nullptr, 0);
+		wr.SetRoot(wr.WriteIntMap(&e, 1)); },
+		EB(EBCFG0PFX(10), U(16), U(0), U(1), U(0xfefdfcfb), U(8), 8));
 
 	// string8
 	WRTEST({ wr.SetRoot(wr.WriteString8("")); },
