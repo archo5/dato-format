@@ -774,6 +774,7 @@ public:
 		u8 _subtype;
 		u8 _elemCount;
 
+		DATO_FORCEINLINE VectorAccessor() : _data(nullptr), _subtype(0), _elemCount(0) {}
 		VectorAccessor(Reader* r, u32 pos)
 		{
 			DATO_BUFFER_EXPECT(pos + 2 <= r->_len);
@@ -785,11 +786,19 @@ public:
 			_data = (const T*) (const void*) (r->_data + pos);
 		}
 
+		DATO_FORCEINLINE operator const void* () const { return _data; } // to support `if (init)` exprs
 		DATO_FORCEINLINE u8 GetElementCount() const { return _elemCount; }
 
 		DATO_FORCEINLINE T operator [](size_t i) const { return ReadT<T>(&_data[i]); }
-
-		DATO_FORCEINLINE void CopyTo(T* ret) const { memcpy(ret, _data, sizeof(T) * _elemCount); }
+		DATO_FORCEINLINE void CopyTo(T* ret, u32 N) const
+		{
+			DATO_INPUT_EXPECT(N <= _elemCount);
+			CopyTo_SkipChecks(ret, N);
+		}
+		DATO_FORCEINLINE void CopyTo_SkipChecks(T* ret, u32 N) const
+		{
+			memcpy(ret, _data, sizeof(T) * N);
+		}
 
 		void Iterate(IValueIterator& it)
 		{
@@ -819,6 +828,7 @@ public:
 		u8 _elemCount;
 		u32 _size;
 
+		DATO_FORCEINLINE VectorArrayAccessor() : _data(nullptr), _subtype(0), _elemCount(0), _size(0) {}
 		VectorArrayAccessor(Reader* r, u32 pos)
 		{
 			DATO_BUFFER_EXPECT(pos + 2 <= r->_len);
@@ -831,6 +841,7 @@ public:
 			_data = (const T*) (const void*) (r->_data + pos);
 		}
 
+		DATO_FORCEINLINE operator const void* () const { return _data; } // to support `if (init)` exprs
 		DATO_FORCEINLINE u8 GetElementCount() const { return _elemCount; }
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
 
@@ -838,6 +849,15 @@ public:
 		DATO_FORCEINLINE Iterator end() const { return { _data + _size * _elemCount, _elemCount }; }
 
 		DATO_FORCEINLINE T operator [](size_t i) const { return ReadT<T>(&_data[i]); }
+		DATO_FORCEINLINE void CopyTo(T* ret, u32 N, u32 elem = 0) const
+		{
+			DATO_INPUT_EXPECT(N + elem * _elemCount <= _size * _elemCount);
+			CopyTo_SkipChecks(ret, N, elem);
+		}
+		DATO_FORCEINLINE void CopyTo_SkipChecks(T* ret, u32 N, u32 elem = 0) const
+		{
+			memcpy(ret, _data, sizeof(T) * (N + elem * _elemCount));
+		}
 
 		void Iterate(IValueIterator& it)
 		{
@@ -850,7 +870,7 @@ public:
 		u32 _pos;
 		u8 _type;
 
-		DATO_FORCEINLINE DynamicAccessor() : _r(nullptr), _pos(0) { this->_type = TYPE_Null; }
+		DATO_FORCEINLINE DynamicAccessor() : _r(nullptr), _pos(0), _type(TYPE_Null) {}
 		DATO_FORCEINLINE DynamicAccessor(Reader* r, u32 pos, u8 type)
 			: _r(r), _pos(pos), _type(type) {}
 
@@ -899,13 +919,13 @@ public:
 		DATO_FORCEINLINE u8 GetType() const { return _type; }
 		inline u8 GetSubtype() const
 		{
-			DATO_INPUT_EXPECT(_type == TYPE_Vector || TYPE_VectorArray);
+			DATO_INPUT_EXPECT(_type == TYPE_Vector || _type == TYPE_VectorArray);
 			DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 			return _r->RD<u8>(_pos);
 		}
 		inline u8 GetElementCount() const
 		{
-			DATO_INPUT_EXPECT(_type == TYPE_Vector || TYPE_VectorArray);
+			DATO_INPUT_EXPECT(_type == TYPE_Vector || _type == TYPE_VectorArray);
 			DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 			return _r->RD<u8>(_pos + 1);
 		}
@@ -947,14 +967,14 @@ public:
 			return IsVectorArray(SubtypeInfo<T>::Subtype, elemCount);
 		}
 
-		// reading the exact data
+		// reading the assumed exact data
 		inline bool AsBool() const { DATO_INPUT_EXPECT(_type == TYPE_Bool); return _pos != 0; }
 		inline s32 AsS32() const { DATO_INPUT_EXPECT(_type == TYPE_S32); return _pos; }
 		inline u32 AsU32() const { DATO_INPUT_EXPECT(_type == TYPE_U32); return _pos; }
-		inline float AsF32() const { DATO_INPUT_EXPECT(_type == TYPE_F32); return ReadT<f32>(&_pos); }
+		inline f32 AsF32() const { DATO_INPUT_EXPECT(_type == TYPE_F32); return ReadT<f32>(&_pos); }
 		inline s64 AsS64() const { DATO_INPUT_EXPECT(_type == TYPE_S64); return _r->RD<s64>(_pos); }
 		inline u64 AsU64() const { DATO_INPUT_EXPECT(_type == TYPE_U64); return _r->RD<u64>(_pos); }
-		inline double AsF64() const { DATO_INPUT_EXPECT(_type == TYPE_F64); return _r->RD<f64>(_pos); }
+		inline f64 AsF64() const { DATO_INPUT_EXPECT(_type == TYPE_F64); return _r->RD<f64>(_pos); }
 
 		inline StringMapAccessor AsStringMap() const
 		{
@@ -1004,6 +1024,40 @@ public:
 			return { _r, _pos };
 		}
 
+		// reading data with validation (to avoid double validation)
+		template <class T> inline VectorAccessor<T> TryGetVector() const
+		{
+			if (_type == TYPE_Vector)
+				return { _r, _pos };
+			return {};
+		}
+		template <class T> inline VectorAccessor<T> TryGetVector(u16 elemCount) const
+		{
+			if (_type == TYPE_Vector)
+			{
+				VectorAccessor<T> v(_r, _pos);
+				if (v.GetElementCount() == elemCount)
+					return v;
+			}
+			return {};
+		}
+		template <class T> inline VectorArrayAccessor<T> TryGetVectorArray() const
+		{
+			if (_type == TYPE_VectorArray)
+				return { _r, _pos };
+			return {};
+		}
+		template <class T> inline VectorArrayAccessor<T> TryGetVectorArray(u16 elemCount) const
+		{
+			if (_type == TYPE_VectorArray)
+			{
+				VectorArrayAccessor<T> v(_r, _pos);
+				if (v.GetElementCount() == elemCount)
+					return v;
+			}
+			return {};
+		}
+
 		// casts
 		template <class T> DATO_NOINLINE T CastToNumber() const
 		{
@@ -1012,10 +1066,10 @@ public:
 			case TYPE_Bool: return T(_pos ? 1 : 0);
 			case TYPE_S32: return T(s32(_pos));
 			case TYPE_U32: return T(_pos);
-			case TYPE_F32: return T(ReadT<float>(&_pos));
+			case TYPE_F32: return T(ReadT<f32>(&_pos));
 			case TYPE_S64: return T(_r->RD<s64>(_pos));
 			case TYPE_U64: return T(_r->RD<u64>(_pos));
-			case TYPE_F64: return T(_r->RD<double>(_pos));
+			case TYPE_F64: return T(_r->RD<f64>(_pos));
 			default: return T(0);
 			}
 		}
@@ -1026,16 +1080,16 @@ public:
 			case TYPE_Bool:
 			case TYPE_S32:
 			case TYPE_U32: return _pos != 0;
-			case TYPE_F32: return ReadT<float>(&_pos) != 0;
+			case TYPE_F32: return ReadT<f32>(&_pos) != 0;
 			case TYPE_S64:
 			case TYPE_U64: return _r->RD<u64>(_pos) != 0;
-			case TYPE_F64: return _r->RD<double>(_pos) != 0;
+			case TYPE_F64: return _r->RD<f64>(_pos) != 0;
 			default: return false;
 			}
 		}
 	};
 
-	DATO_NOINLINE bool Init(const void* data, u32 len, const void* prefix = "DATO", u32 prefix_len = 4, u8 ignore_flags = 0)
+	DATO_NOINLINE bool Init(const void* data, u32 len, const void* prefix = "DATO", u32 prefix_len = 4)
 	{
 		if (prefix_len + 3 > len)
 			return false;
@@ -1059,7 +1113,7 @@ public:
 		// safe to init
 		_data = cdata;
 		_len = len;
-		_flags = cdata[prefix_len + 1] & ~ignore_flags;
+		_flags = cdata[prefix_len + 1];
 		_root = root;
 		_rootType = cdata[prefix_len + 2];
 		return true;

@@ -120,12 +120,14 @@ def run_benchinternals():
 		" benchinternals.cpp benchutil.cpp -lkernel32 && benchinternals"
 	)
 def run_benchfiles():
+	validate = len(sys.argv) < 3 or sys.argv[2] == "check"
+	validate_defs = "" if validate else "-DDATO_VALIDATE_BUFFERS=0 -DDATO_VALIDATE_INPUTS=0"
 	for i in range(0, 5):
 		print("config =", i)
 		RUN(
 			"clang -o benchfiles.exe -Wall -g -O2 -fno-exceptions -fno-rtti"
-			" benchfiles.cpp benchutil.cpp -DCONFIG=%d"
-			" -lkernel32 && benchfiles gen-nodes" % i
+			" benchfiles.cpp benchutil.cpp -DCONFIG=%d %s"
+			" -lkernel32 && benchfiles gen-nodes" % (i, validate_defs)
 		)
 
 def run_objtest():

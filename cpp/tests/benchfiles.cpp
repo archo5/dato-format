@@ -188,32 +188,40 @@ static void gen_nodes(int argc, char* argv[])
 			for (u32 i = 0; i < arr.GetSize(); i++)
 			{
 				auto obj = arr[i].AsStringMap();
-				auto vpos = obj.FindValueByKey("localPosition");
-				if (vpos.IsVectorT<float>(3))
+				if (auto vpos = obj.FindValueByKey("localPosition"))
 				{
-					float v[3];
-					vpos.AsVector<float>().CopyTo(v);
-					DoNotOpt(v);
+					if (auto vv = vpos.TryGetVector<float>(3))
+					{
+						float v[3];
+						vv.CopyTo(v, 3);
+						DoNotOpt(v);
+					}
 				}
-				auto vrot = obj.FindValueByKey("localRotation");
-				if (vrot.IsVectorT<float>(4))
+				if (auto vrot = obj.FindValueByKey("localRotation"))
 				{
-					float v[4];
-					vrot.AsVector<float>().CopyTo(v);
-					DoNotOpt(v);
+					if (auto vv = vrot.TryGetVector<float>(4))
+					{
+						float v[4];
+						vv.CopyTo(v, 4);
+						DoNotOpt(v);
+					}
 				}
-				auto vscale = obj.FindValueByKey("localScale");
-				if (vscale.IsVectorT<float>(3))
+				if (auto vscale = obj.FindValueByKey("localScale"))
 				{
-					float v[3];
-					vscale.AsVector<float>().CopyTo(v);
-					DoNotOpt(v);
+					if (auto vv = vscale.TryGetVector<float>(3))
+					{
+						float v[3];
+						vv.CopyTo(v, 3);
+						DoNotOpt(v);
+					}
 				}
-				auto vparent = obj.FindValueByKey("parent");
-				if (vparent.IsNumber())
+				if (auto vparent = obj.FindValueByKey("parent"))
 				{
-					auto v = vparent.CastToNumber<s32>();
-					DoNotOpt(v);
+					if (vparent.IsNumber())
+					{
+						auto v = vparent.CastToNumber<s32>();
+						DoNotOpt(v);
+					}
 				}
 			}
 		}

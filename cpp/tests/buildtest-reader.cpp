@@ -11,13 +11,17 @@ template <class T> void TypedArrayUser(const T& ca)
 
 template <class T> void VectorUser(const T& ca)
 {
+	if (ca) (void) ca;
 	auto& a = const_cast<T&>(ca);
 	a.GetElementCount();
 	a[1];
+	a.CopyTo(nullptr, 0);
+	a.CopyTo_SkipChecks(nullptr, 0);
 }
 
 template <class T> void VectorArrayUser(const T& ca)
 {
+	if (ca) (void) ca;
 	auto& a = const_cast<T&>(ca);
 	a.GetElementCount();
 	a.GetSize();
@@ -26,6 +30,8 @@ template <class T> void VectorArrayUser(const T& ca)
 	{
 		it[1];
 	}
+	a.CopyTo(nullptr, 0);
+	a.CopyTo_SkipChecks(nullptr, 0);
 }
 
 template <class Config> void TestReader()
@@ -40,6 +46,7 @@ template <class Config> void TestReader()
 	}
 #endif
 	{
+		if (dyn) (void) dyn;
 		dyn.GetType();
 		dyn.IsNull();
 		dyn.GetSubtype();
