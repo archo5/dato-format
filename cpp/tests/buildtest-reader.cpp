@@ -85,6 +85,7 @@ template <class Config> void TestReader()
 	}
 	{
 		auto sm = dyn.AsStringMap();
+		if (sm) (void) sm;
 		for (const auto& it : sm)
 		{
 			it.GetKeyCStr();
@@ -99,6 +100,7 @@ template <class Config> void TestReader()
 	}
 	{
 		auto im = dyn.AsIntMap();
+		if (im) (void) im;
 		for (const auto& it : im)
 		{
 			it.GetKey();
@@ -110,6 +112,7 @@ template <class Config> void TestReader()
 	}
 	{
 		auto arr = dyn.AsArray();
+		if (arr) (void) arr;
 		arr.GetSize();
 		for (const auto& it : arr) (void)it;
 		arr.TryGetValueByIndex(0);
@@ -144,6 +147,39 @@ template <class Config> void TestReader()
 		VectorArrayUser(dyn.template AsVectorArray<u64>());
 		VectorArrayUser(dyn.template AsVectorArray<f32>());
 		VectorArrayUser(dyn.template AsVectorArray<f64>());
+	}
+	{
+		dyn.TryGetStringMap();
+		dyn.TryGetIntMap();
+		dyn.TryGetArray();
+		dyn.TryGetString8();
+		dyn.TryGetString16();
+		dyn.TryGetString32();
+		dyn.TryGetByteArray();
+	}
+	{
+		dyn.template TryGetVector<s8>();
+		dyn.template TryGetVector<u8>();
+		dyn.template TryGetVector<s16>();
+		dyn.template TryGetVector<u16>();
+		dyn.template TryGetVector<s32>();
+		dyn.template TryGetVector<u32>();
+		dyn.template TryGetVector<s64>();
+		dyn.template TryGetVector<u64>();
+		dyn.template TryGetVector<f32>();
+		dyn.template TryGetVector<f64>();
+	}
+	{
+		dyn.template TryGetVectorArray<s8>();
+		dyn.template TryGetVectorArray<u8>();
+		dyn.template TryGetVectorArray<s16>();
+		dyn.template TryGetVectorArray<u16>();
+		dyn.template TryGetVectorArray<s32>();
+		dyn.template TryGetVectorArray<u32>();
+		dyn.template TryGetVectorArray<s64>();
+		dyn.template TryGetVectorArray<u64>();
+		dyn.template TryGetVectorArray<f32>();
+		dyn.template TryGetVectorArray<f64>();
 	}
 	{
 		dyn.template CastToNumber<s32>();

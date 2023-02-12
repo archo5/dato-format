@@ -183,44 +183,50 @@ static void gen_nodes(int argc, char* argv[])
 		while (B.Iterate())
 		{
 			RDR rdr;
-			rdr.Init(W.GetData(), W.GetSize());
-			auto arr = rdr.GetRoot().AsArray();
-			for (u32 i = 0; i < arr.GetSize(); i++)
+			if (rdr.Init(W.GetData(), W.GetSize()))
 			{
-				auto obj = arr[i].AsStringMap();
-				if (auto vpos = obj.FindValueByKey("localPosition"))
+				if (auto arr = rdr.GetRoot().TryGetArray())
 				{
-					if (auto vv = vpos.TryGetVector<float>(3))
+					for (u32 i = 0; i < arr.GetSize(); i++)
 					{
-						float v[3];
-						vv.CopyTo(v, 3);
-						DoNotOpt(v);
-					}
-				}
-				if (auto vrot = obj.FindValueByKey("localRotation"))
-				{
-					if (auto vv = vrot.TryGetVector<float>(4))
-					{
-						float v[4];
-						vv.CopyTo(v, 4);
-						DoNotOpt(v);
-					}
-				}
-				if (auto vscale = obj.FindValueByKey("localScale"))
-				{
-					if (auto vv = vscale.TryGetVector<float>(3))
-					{
-						float v[3];
-						vv.CopyTo(v, 3);
-						DoNotOpt(v);
-					}
-				}
-				if (auto vparent = obj.FindValueByKey("parent"))
-				{
-					if (vparent.IsNumber())
-					{
-						auto v = vparent.CastToNumber<s32>();
-						DoNotOpt(v);
+						if (auto obj = arr[i].TryGetStringMap())
+						{
+							if (auto vpos = obj.FindValueByKey("localPosition"))
+							{
+								if (auto vv = vpos.TryGetVector<float>(3))
+								{
+									float v[3];
+									vv.CopyTo(v, 3);
+									DoNotOpt(v);
+								}
+							}
+							if (auto vrot = obj.FindValueByKey("localRotation"))
+							{
+								if (auto vv = vrot.TryGetVector<float>(4))
+								{
+									float v[4];
+									vv.CopyTo(v, 4);
+									DoNotOpt(v);
+								}
+							}
+							if (auto vscale = obj.FindValueByKey("localScale"))
+							{
+								if (auto vv = vscale.TryGetVector<float>(3))
+								{
+									float v[3];
+									vv.CopyTo(v, 3);
+									DoNotOpt(v);
+								}
+							}
+							if (auto vparent = obj.FindValueByKey("parent"))
+							{
+								if (vparent.IsNumber())
+								{
+									auto v = vparent.CastToNumber<s32>();
+									DoNotOpt(v);
+								}
+							}
+						}
 					}
 				}
 			}

@@ -424,6 +424,7 @@ public:
 		u32 _size;
 		u32 _objpos;
 
+		DATO_FORCEINLINE MapAccessor() : _r(nullptr), _pos(0), _size(0), _objpos(0) {}
 		MapAccessor(Reader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_objpos = pos;
@@ -431,6 +432,7 @@ public:
 			DATO_BUFFER_EXPECT(pos + 9 * _size <= r->_len);
 		}
 
+		DATO_FORCEINLINE operator const void* () const { return _r; } // to support `if (init)` exprs
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
 
 		// retrieving values
@@ -672,6 +674,7 @@ public:
 		u32 _size;
 		u32 _arrpos;
 
+		DATO_FORCEINLINE ArrayAccessor() : _r(nullptr), _pos(0), _size(0), _arrpos(0) {}
 		ArrayAccessor(Reader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_arrpos = pos;
@@ -679,6 +682,7 @@ public:
 			DATO_BUFFER_EXPECT(pos + 5 * _size <= r->_len);
 		}
 
+		DATO_FORCEINLINE operator const void* () const { return _r; } // to support `if (init)` exprs
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
 
 		DATO_FORCEINLINE Iterator begin() const { return { this, 0 }; }
@@ -734,6 +738,7 @@ public:
 		const T* _data;
 		u32 _size;
 
+		DATO_FORCEINLINE TypedArrayAccessor() : _data(nullptr), _size(0) {}
 		TypedArrayAccessor(Reader* r, u32 pos)
 		{
 			_size = r->_cfg.ReadValueLength(r->_data, r->_len, pos);
@@ -742,6 +747,7 @@ public:
 			_data = (const T*) (const void*) (r->_data + pos);
 		}
 
+		DATO_FORCEINLINE operator const void* () const { return _data; } // to support `if (init)` exprs
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
 
 		DATO_FORCEINLINE Iterator begin() const { return { _data }; }
@@ -1025,6 +1031,50 @@ public:
 		}
 
 		// reading data with validation (to avoid double validation)
+		inline StringMapAccessor TryGetStringMap() const
+		{
+			if (_type == TYPE_StringMap)
+				return { _r, _pos };
+			return {};
+		}
+		inline IntMapAccessor TryGetIntMap() const
+		{
+			if (_type == TYPE_IntMap)
+				return { _r, _pos };
+			return {};
+		}
+		inline ArrayAccessor TryGetArray() const
+		{
+			if (_type == TYPE_Array)
+				return { _r, _pos };
+			return {};
+		}
+
+		inline StringAccessor<char> TryGetString8() const
+		{
+			if (_type == TYPE_String8)
+				return { _r, _pos };
+			return {};
+		}
+		inline StringAccessor<u16> TryGetString16() const
+		{
+			if (_type == TYPE_String16)
+				return { _r, _pos };
+			return {};
+		}
+		inline StringAccessor<u32> TryGetString32() const
+		{
+			if (_type == TYPE_String32)
+				return { _r, _pos };
+			return {};
+		}
+		inline ByteArrayAccessor TryGetByteArray() const
+		{
+			if (_type == TYPE_ByteArray)
+				return { _r, _pos };
+			return {};
+		}
+
 		template <class T> inline VectorAccessor<T> TryGetVector() const
 		{
 			if (_type == TYPE_Vector)
