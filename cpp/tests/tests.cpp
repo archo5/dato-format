@@ -572,9 +572,9 @@ struct ExpectationBuilder
 	dato::Writer<dato::WriterConfig0> wr; \
 	build; \
 	expected; \
-	CHECK_TRUE(dato::UniversalBufferReader().Init(eb.bfr, eb.len)); \
+	CHECK_TRUE(dato::UniversalReader().Init(eb.bfr, eb.len)); \
 	CHECK_BUF_EQ(eb.bfr, eb.len, wr.GetData(), wr.GetSize()); \
-	dato::UniversalBufferReader ubr; \
+	dato::UniversalReader ubr; \
 	CHECK_TRUE(ubr.Init(wr.GetData(), wr.GetSize())); \
 	auto root = ubr.GetRoot(); \
 	dato::FILEValueDumperIterator it(stdout); \

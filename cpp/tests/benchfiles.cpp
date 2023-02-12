@@ -23,8 +23,8 @@ using namespace dato;
 #define DATO_STRINGIFY(a) _DATO_STRINGIFY(a)
 #define DATO_CONFIG DATO_CONCAT(WriterConfig, CONFIG)
 using WRTR = Writer<DATO_CONFIG>;
-using RDR = BufferReader<DATO_CONCAT(ReaderConfig, CONFIG)>;
-//using RDR = BufferReader<ReaderAdaptiveConfig>;
+using RDR = Reader<DATO_CONCAT(ReaderConfig, CONFIG)>;
+//using RDR = Reader<ReaderAdaptiveConfig>;
 
 
 static bool streq(const char* a, const char* b)

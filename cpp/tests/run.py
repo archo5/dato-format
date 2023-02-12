@@ -89,6 +89,29 @@ def BUILDTEST(text):
 		msvc.RUN64(f"cl /nologo {MSVC_WARNINGS} buildtest.gen.cpp")
 		SAFEDEL("buildtest.gen.exe")
 
+def fmtsize(n):
+	if n < 10240:
+		return str(n) + " B"
+	n /= 1024
+	return "%.2f KB" % n
+
+def BUILDOBJTEST(text):
+	with open("buildtest.gen.cpp", "w") as f:
+		f.write(text)
+	RUN(f"clang -o buildtest.gen.obj -m32 {CLANG_WARNINGS} -c buildtest.gen.cpp")
+	print("- Clang 32-bit size = " + fmtsize(os.path.getsize("buildtest.gen.obj")))
+	RUN(f"clang -o buildtest.gen.obj -m64 {CLANG_WARNINGS} -c buildtest.gen.cpp")
+	print("- Clang 64-bit size = " + fmtsize(os.path.getsize("buildtest.gen.obj")))
+	if os.name == "nt":
+		msvc = GET_MSVC()
+		SAFEDEL("buildtest.gen.obj")
+		msvc.RUN32(f"cl /nologo {MSVC_WARNINGS} /c buildtest.gen.cpp")
+		print("- MSVC 32-bit size = " + fmtsize(os.path.getsize("buildtest.gen.obj")))
+		SAFEDEL("buildtest.gen.obj")
+		msvc.RUN64(f"cl /nologo {MSVC_WARNINGS} /c buildtest.gen.cpp")
+		print("- MSVC 64-bit size = " + fmtsize(os.path.getsize("buildtest.gen.obj")))
+		SAFEDEL("buildtest.gen.obj")
+
 def run_test():
 	RUN("clang -o test.exe -Wall -g tests.cpp && test")
 def run_benchinternals():
@@ -104,6 +127,22 @@ def run_benchfiles():
 			" benchfiles.cpp benchutil.cpp -DCONFIG=%d"
 			" -lkernel32 && benchfiles gen-nodes" % i
 		)
+
+def run_objtest():
+	print("=== running object size tests ===")
+	print("-- reader / dump --")
+	with open("buildtest-reader.cpp", "r") as f:
+		suffix = f.read()
+		text = '#include "../dato_reader.hpp"\n'
+		text += '#include "../dato_dump.hpp"\n#define CANDUMP\n'
+		text += suffix
+		BUILDOBJTEST(text)
+	print("-- writer --")
+	with open("buildtest-writer.cpp", "r") as f:
+		suffix = f.read()
+		incline = '#include "../dato_writer.hpp"'
+		text = f"{incline}\n{suffix}\n"
+		BUILDOBJTEST(text)
 
 def run_buildtest():
 	print("=== running build tests ===")

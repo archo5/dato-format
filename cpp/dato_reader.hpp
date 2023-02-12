@@ -373,7 +373,7 @@ struct IValueIterator
 };
 
 template <class Config>
-struct BufferReader
+struct Reader
 {
 private:
 	Config _cfg = {};
@@ -419,12 +419,12 @@ public:
 	struct DynamicAccessor;
 	struct MapAccessor
 	{
-		BufferReader* _r;
+		Reader* _r;
 		u32 _pos;
 		u32 _size;
 		u32 _objpos;
 
-		MapAccessor(BufferReader* r, u32 pos) : _r(r), _pos(pos)
+		MapAccessor(Reader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_objpos = pos;
 			_size = r->_cfg.ReadObjectSize(r->_data, r->_len, _objpos);
@@ -667,12 +667,12 @@ public:
 			DATO_FORCEINLINE void operator ++ () { ++_i; }
 		};
 
-		BufferReader* _r;
+		Reader* _r;
 		u32 _pos;
 		u32 _size;
 		u32 _arrpos;
 
-		ArrayAccessor(BufferReader* r, u32 pos) : _r(r), _pos(pos)
+		ArrayAccessor(Reader* r, u32 pos) : _r(r), _pos(pos)
 		{
 			_arrpos = pos;
 			_size = r->_cfg.ReadArrayLength(r->_data, r->_len, _arrpos);
@@ -734,7 +734,7 @@ public:
 		const T* _data;
 		u32 _size;
 
-		TypedArrayAccessor(BufferReader* r, u32 pos)
+		TypedArrayAccessor(Reader* r, u32 pos)
 		{
 			_size = r->_cfg.ReadValueLength(r->_data, r->_len, pos);
 			DATO_BUFFER_EXPECT(pos + sizeof(T) * _size <= r->_len);
@@ -774,7 +774,7 @@ public:
 		u8 _subtype;
 		u8 _elemCount;
 
-		VectorAccessor(BufferReader* r, u32 pos)
+		VectorAccessor(Reader* r, u32 pos)
 		{
 			DATO_BUFFER_EXPECT(pos + 2 <= r->_len);
 			_subtype = r->RD<u8>(pos++);
@@ -819,7 +819,7 @@ public:
 		u8 _elemCount;
 		u32 _size;
 
-		VectorArrayAccessor(BufferReader* r, u32 pos)
+		VectorArrayAccessor(Reader* r, u32 pos)
 		{
 			DATO_BUFFER_EXPECT(pos + 2 <= r->_len);
 			_subtype = r->RD<u8>(pos++);
@@ -846,12 +846,12 @@ public:
 	};
 	struct DynamicAccessor
 	{
-		BufferReader* _r;
+		Reader* _r;
 		u32 _pos;
 		u8 _type;
 
 		DATO_FORCEINLINE DynamicAccessor() : _r(nullptr), _pos(0) { this->_type = TYPE_Null; }
-		DATO_FORCEINLINE DynamicAccessor(BufferReader* r, u32 pos, u8 type)
+		DATO_FORCEINLINE DynamicAccessor(Reader* r, u32 pos, u8 type)
 			: _r(r), _pos(pos), _type(type) {}
 
 		DATO_FORCEINLINE bool IsValid() const { return !!_r; }
@@ -1071,7 +1071,11 @@ public:
 	}
 };
 
-typedef BufferReader<ReaderConfig0> Config0BufferReader;
-typedef BufferReader<ReaderAdaptiveConfig> UniversalBufferReader;
+typedef Reader<ReaderConfig0> Config0Reader;
+typedef Reader<ReaderConfig1> Config1Reader;
+typedef Reader<ReaderConfig2> Config2Reader;
+typedef Reader<ReaderConfig3> Config3Reader;
+typedef Reader<ReaderConfig4> Config4Reader;
+typedef Reader<ReaderAdaptiveConfig> UniversalReader;
 
 } // dato

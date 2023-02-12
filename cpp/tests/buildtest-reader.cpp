@@ -30,7 +30,7 @@ template <class T> void VectorArrayUser(const T& ca)
 
 template <class Config> void TestReader()
 {
-	BufferReader<Config> r;
+	Reader<Config> r;
 	r.Init(nullptr, 0);
 	auto dyn = r.GetRoot();
 #ifdef CANDUMP
