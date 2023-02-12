@@ -1,6 +1,15 @@
 
+#include <stdio.h>
+
+#ifdef __clang__
+template <class T> inline __attribute__((always_inline)) void DoNotOpt(T& val)
+{
+	asm volatile("" : "+r,m"(val) : : "memory");
+}
+#else
 void SINK(void*);
 #define DoNotOpt(x) SINK((void*)&(x))
+#endif
 
 using Timestamp = long long;
 

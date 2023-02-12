@@ -1,4 +1,5 @@
 
+#include "../dato_reader.hpp"
 #include "../dato_writer.hpp"
 
 #include "bench.hpp"
@@ -323,10 +324,149 @@ void StringSortSpeed_SpecificSets()
 	}
 }
 
+void SizeDecodeSpeed()
+{
+	puts("= size decode speed =");
+	using namespace dato;
+	char data[5] = {};
+	for (char& c : data)
+		c = char(-1);
+	int count = 1000;
+	{
+		Benchmark B("read u8");
+		while (B.Iterate())
+		{
+			for (int i = 0; i < count; i++)
+			{
+				u32 pos = 0;
+				DoNotOpt(pos);
+				DoNotOpt(data);
+				u32 val = ReadSizeU8(data, 5, pos);
+				DoNotOpt(val);
+				DoNotOpt(pos);
+			}
+		}
+	}
+	{
+		Benchmark B("read u16");
+		while (B.Iterate())
+		{
+			for (int i = 0; i < count; i++)
+			{
+				u32 pos = 0;
+				DoNotOpt(pos);
+				DoNotOpt(data);
+				u32 val = ReadSizeU16(data, 5, pos);
+				DoNotOpt(val);
+				DoNotOpt(pos);
+			}
+		}
+	}
+	{
+		Benchmark B("read u32");
+		while (B.Iterate())
+		{
+			for (int i = 0; i < count; i++)
+			{
+				u32 pos = 0;
+				DoNotOpt(pos);
+				DoNotOpt(data);
+				u32 val = ReadSizeU32(data, 5, pos);
+				DoNotOpt(val);
+				DoNotOpt(pos);
+			}
+		}
+	}
+	{
+		Benchmark B("read u8x32");
+		while (B.Iterate())
+		{
+			for (int i = 0; i < count; i++)
+			{
+				u32 pos = 0;
+				DoNotOpt(pos);
+				DoNotOpt(data);
+				u32 val = ReadSizeU8X32(data, 5, pos);
+				DoNotOpt(val);
+				DoNotOpt(pos);
+			}
+		}
+	}
+	{
+		Benchmark B("pfn read u8");
+		ReaderAdaptiveConfig::ReadFunc* fn = &ReadSizeU8;
+		while (B.Iterate())
+		{
+			DoNotOpt(fn);
+			for (int i = 0; i < count; i++)
+			{
+				u32 pos = 0;
+				DoNotOpt(pos);
+				DoNotOpt(data);
+				u32 val = fn(data, 5, pos);
+				DoNotOpt(val);
+				DoNotOpt(pos);
+			}
+		}
+	}
+	{
+		Benchmark B("pfn read u16");
+		ReaderAdaptiveConfig::ReadFunc* fn = &ReadSizeU16;
+		while (B.Iterate())
+		{
+			DoNotOpt(fn);
+			for (int i = 0; i < count; i++)
+			{
+				u32 pos = 0;
+				DoNotOpt(pos);
+				DoNotOpt(data);
+				u32 val = fn(data, 5, pos);
+				DoNotOpt(val);
+				DoNotOpt(pos);
+			}
+		}
+	}
+	{
+		Benchmark B("pfn read u32");
+		ReaderAdaptiveConfig::ReadFunc* fn = &ReadSizeU32;
+		while (B.Iterate())
+		{
+			DoNotOpt(fn);
+			for (int i = 0; i < count; i++)
+			{
+				u32 pos = 0;
+				DoNotOpt(pos);
+				DoNotOpt(data);
+				u32 val = fn(data, 5, pos);
+				DoNotOpt(val);
+				DoNotOpt(pos);
+			}
+		}
+	}
+	{
+		Benchmark B("pfn read u8x32");
+		ReaderAdaptiveConfig::ReadFunc* fn = &ReadSizeU8X32;
+		while (B.Iterate())
+		{
+			DoNotOpt(fn);
+			for (int i = 0; i < count; i++)
+			{
+				u32 pos = 0;
+				DoNotOpt(pos);
+				DoNotOpt(data);
+				u32 val = fn(data, 5, pos);
+				DoNotOpt(val);
+				DoNotOpt(pos);
+			}
+		}
+	}
+}
+
 int main()
 {
 	Overhead();
 	IntSortSpeed();
 	StringSortSpeed_RandomChars();
 	StringSortSpeed_SpecificSets();
+	SizeDecodeSpeed();
 }

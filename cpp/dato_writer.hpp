@@ -176,7 +176,7 @@ struct Builder
 
 	void Reserve(u32 atLeast)
 	{
-		if (_size < atLeast)
+		if (_mem < atLeast)
 			_ResizeImpl(atLeast);
 	}
 

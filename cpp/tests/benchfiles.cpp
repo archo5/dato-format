@@ -1,4 +1,5 @@
 
+#define _HAS_EXCEPTIONS 0
 #define _CRT_SECURE_NO_WARNINGS
 #include "../dato_reader.hpp"
 #include "../dato_writer.hpp"
@@ -23,6 +24,7 @@ using namespace dato;
 #define DATO_CONFIG DATO_CONCAT(WriterConfig, CONFIG)
 using WRTR = Writer<DATO_CONFIG>;
 using RDR = BufferReader<DATO_CONCAT(ReaderConfig, CONFIG)>;
+//using RDR = BufferReader<ReaderAdaptiveConfig>;
 
 
 static bool streq(const char* a, const char* b)
@@ -123,7 +125,7 @@ struct NULLValueIterator : IValueIterator
 
 static void gen_nodes(int argc, char* argv[])
 {
-	int count = 10000;
+	int count = 1000;
 
 	WRTR W;
 	{
@@ -133,6 +135,7 @@ static void gen_nodes(int argc, char* argv[])
 			LCG lcg;
 			W.~WRTR();
 			new (&W) WRTR("DATO", 4, FLAG_Aligned | FLAG_SortedKeys | FLAG_RelContValRefs, true);
+			W.Reserve(1024 * 1024);
 
 			std::vector<ValueRef> vrnodes;
 			vrnodes.reserve(count);
@@ -173,6 +176,46 @@ static void gen_nodes(int argc, char* argv[])
 			rdr.Init(W.GetData(), W.GetSize());
 			NULLValueIterator it;
 			rdr.GetRoot().Iterate(it);
+		}
+	}
+	{
+		Benchmark B("read-nodes");//, 100000, 10);
+		while (B.Iterate())
+		{
+			RDR rdr;
+			rdr.Init(W.GetData(), W.GetSize());
+			auto arr = rdr.GetRoot().AsArray();
+			for (u32 i = 0; i < arr.GetSize(); i++)
+			{
+				auto obj = arr[i].AsStringMap();
+				auto vpos = obj.FindValueByKey("localPosition");
+				if (vpos.IsVectorT<float>(3))
+				{
+					float v[3];
+					vpos.AsVector<float>().CopyTo(v);
+					DoNotOpt(v);
+				}
+				auto vrot = obj.FindValueByKey("localRotation");
+				if (vrot.IsVectorT<float>(4))
+				{
+					float v[4];
+					vrot.AsVector<float>().CopyTo(v);
+					DoNotOpt(v);
+				}
+				auto vscale = obj.FindValueByKey("localScale");
+				if (vscale.IsVectorT<float>(3))
+				{
+					float v[3];
+					vscale.AsVector<float>().CopyTo(v);
+					DoNotOpt(v);
+				}
+				auto vparent = obj.FindValueByKey("parent");
+				if (vparent.IsNumber())
+				{
+					auto v = vparent.CastToNumber<s32>();
+					DoNotOpt(v);
+				}
+			}
 		}
 	}
 	SaveBuffer("nodes" DATO_STRINGIFY(CONFIG) ".gen.dato", W);

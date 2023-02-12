@@ -8,9 +8,11 @@
 
 #ifdef _MSC_VER
 #  define DATO_FORCEINLINE __forceinline
+#  define DATO_NOINLINE __declspec(noinline)
 #  define DATO_BREAKPOINT __debugbreak()
 #else
 #  define DATO_FORCEINLINE inline __attribute__((always_inline))
+#  define DATO_NOINLINE __attribute__((noinline))
 #  define DATO_BREAKPOINT __builtin_debugtrap()
 #endif
 
@@ -432,13 +434,13 @@ public:
 		DATO_FORCEINLINE u32 GetSize() const { return _size; }
 
 		// retrieving values
-		DynamicAccessor TryGetValueByIndex(size_t i) const
+		DATO_FORCEINLINE DynamicAccessor TryGetValueByIndex(size_t i) const
 		{
 			if (i >= _size)
 				return {};
 			return GetValueByIndex(i);
 		}
-		DynamicAccessor GetValueByIndex(size_t i) const
+		DATO_FORCEINLINE DynamicAccessor GetValueByIndex(size_t i) const
 		{
 			DATO_INPUT_EXPECT(i < _size);
 			u32 vpos = _objpos + _size * 4 + u32(i) * 4;
@@ -470,8 +472,8 @@ public:
 
 		using MapAccessor::MapAccessor;
 
-		Iterator begin() const { return { this, 0 }; }
-		Iterator end() const { return { this, this->_size }; }
+		DATO_FORCEINLINE Iterator begin() const { return { this, 0 }; }
+		DATO_FORCEINLINE Iterator end() const { return { this, this->_size }; }
 
 		DATO_FORCEINLINE Iterator operator [](size_t i) const
 		{
@@ -499,7 +501,7 @@ public:
 		}
 
 		// searching for values
-		DynamicAccessor FindValueByKey(const char* keyToFind) const
+		DATO_NOINLINE DynamicAccessor FindValueByKey(const char* keyToFind) const
 		{
 			auto* BR = this->_r;
 			if (BR->_flags & FLAG_SortedKeys)
@@ -529,7 +531,7 @@ public:
 			}
 			return {};
 		}
-		DynamicAccessor FindValueByKey(const void* keyToFind, size_t lenKeyToFind) const
+		DATO_NOINLINE DynamicAccessor FindValueByKey(const void* keyToFind, size_t lenKeyToFind) const
 		{
 			auto* BR = this->_r;
 			if (BR->_flags & FLAG_SortedKeys)
@@ -560,7 +562,7 @@ public:
 			return {};
 		}
 
-		void Iterate(IValueIterator& it)
+		DATO_NOINLINE void Iterate(IValueIterator& it)
 		{
 			it.BeginMap(TYPE_StringMap, this->_size);
 			for (u32 i = 0; i < this->_size; i++)
@@ -593,8 +595,8 @@ public:
 
 		using MapAccessor::MapAccessor;
 
-		Iterator begin() const { return { this, 0 }; }
-		Iterator end() const { return { this, this->_size }; }
+		DATO_FORCEINLINE Iterator begin() const { return { this, 0 }; }
+		DATO_FORCEINLINE Iterator end() const { return { this, this->_size }; }
 
 		DATO_FORCEINLINE Iterator operator [](size_t i) const
 		{
@@ -610,7 +612,7 @@ public:
 		}
 
 		// searching for values
-		DynamicAccessor FindValueByKey(u32 keyToFind) const
+		DATO_NOINLINE DynamicAccessor FindValueByKey(u32 keyToFind) const
 		{
 			if (this->_r->_flags & FLAG_SortedKeys)
 			{
@@ -639,7 +641,7 @@ public:
 			return {};
 		}
 
-		void Iterate(IValueIterator& it)
+		DATO_NOINLINE void Iterate(IValueIterator& it)
 		{
 			it.BeginMap(TYPE_IntMap, this->_size);
 			for (u32 i = 0; i < this->_size; i++)
@@ -685,13 +687,13 @@ public:
 		DATO_FORCEINLINE DynamicAccessor operator [](size_t i) const { return GetValueByIndex(i); }
 
 		// retrieving values
-		DynamicAccessor TryGetValueByIndex(size_t i) const
+		DATO_FORCEINLINE DynamicAccessor TryGetValueByIndex(size_t i) const
 		{
 			if (i >= _size)
 				return {};
 			return GetValueByIndex(i);
 		}
-		DynamicAccessor GetValueByIndex(size_t i) const
+		DATO_FORCEINLINE DynamicAccessor GetValueByIndex(size_t i) const
 		{
 			DATO_INPUT_EXPECT(i < _size);
 			u32 vpos = _arrpos + u32(i) * 4;
@@ -703,7 +705,7 @@ public:
 			return { _r, val, type };
 		}
 
-		void Iterate(IValueIterator& it)
+		DATO_NOINLINE void Iterate(IValueIterator& it)
 		{
 			it.BeginArray(_size);
 			for (u32 i = 0; i < _size; i++)
@@ -787,6 +789,8 @@ public:
 
 		DATO_FORCEINLINE T operator [](size_t i) const { return ReadT<T>(&_data[i]); }
 
+		DATO_FORCEINLINE void CopyTo(T* ret) const { memcpy(ret, _data, sizeof(T) * _elemCount); }
+
 		void Iterate(IValueIterator& it)
 		{
 			it.OnValueVector(_subtype, _elemCount, _data);
@@ -853,25 +857,25 @@ public:
 		DATO_FORCEINLINE bool IsValid() const { return !!_r; }
 		DATO_FORCEINLINE operator const void* () const { return _r; } // to support `if (init)` exprs
 
-		void Iterate(IValueIterator& it)
+		DATO_NOINLINE void Iterate(IValueIterator& it)
 		{
 			switch (_type)
 			{
 			case TYPE_Null: it.OnValueNull(); break;
-			case TYPE_Bool: it.OnValueBool(AsBool()); break;
-			case TYPE_S32: it.OnValueS32(AsS32()); break;
-			case TYPE_U32: it.OnValueU32(AsU32()); break;
-			case TYPE_F32: it.OnValueF32(AsF32()); break;
-			case TYPE_S64: it.OnValueS64(AsS64()); break;
-			case TYPE_U64: it.OnValueU64(AsU64()); break;
-			case TYPE_F64: it.OnValueF64(AsF64()); break;
-			case TYPE_Array: AsArray().Iterate(it); break;
-			case TYPE_StringMap: AsStringMap().Iterate(it); break;
-			case TYPE_IntMap: AsIntMap().Iterate(it); break;
-			case TYPE_String8: AsString8().Iterate(it); break;
-			case TYPE_String16: AsString16().Iterate(it); break;
-			case TYPE_String32: AsString32().Iterate(it); break;
-			case TYPE_ByteArray: AsByteArray().Iterate(it); break;
+			case TYPE_Bool: it.OnValueBool(_pos != 0); break;
+			case TYPE_S32: it.OnValueS32(_pos); break;
+			case TYPE_U32: it.OnValueU32(_pos); break;
+			case TYPE_F32: it.OnValueF32(ReadT<f32>(&_pos)); break;
+			case TYPE_S64: it.OnValueS64(_r->RD<s64>(_pos)); break;
+			case TYPE_U64: it.OnValueU64(_r->RD<u64>(_pos)); break;
+			case TYPE_F64: it.OnValueF64(_r->RD<f64>(_pos)); break;
+			case TYPE_Array: ArrayAccessor(_r, _pos).Iterate(it); break;
+			case TYPE_StringMap: StringMapAccessor(_r, _pos).Iterate(it); break;
+			case TYPE_IntMap: IntMapAccessor(_r, _pos).Iterate(it); break;
+			case TYPE_String8: StringAccessor<char>(_r, _pos).Iterate(it); break;
+			case TYPE_String16: StringAccessor<u16>(_r, _pos).Iterate(it); break;
+			case TYPE_String32: StringAccessor<u32>(_r, _pos).Iterate(it); break;
+			case TYPE_ByteArray: ByteArrayAccessor(_r, _pos).Iterate(it); break;
 			case TYPE_Vector: {
 				DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 				u8 subtype = _r->RD<u8>(_pos);
@@ -893,22 +897,28 @@ public:
 
 		// reading type info
 		DATO_FORCEINLINE u8 GetType() const { return _type; }
-		DATO_FORCEINLINE bool IsNull() const { return _type == TYPE_Null; }
-		DATO_FORCEINLINE u8 GetSubtype() const
+		inline u8 GetSubtype() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_Vector || TYPE_VectorArray);
 			DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 			return _r->RD<u8>(_pos);
 		}
-		DATO_FORCEINLINE u8 GetElementCount() const
+		inline u8 GetElementCount() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_Vector || TYPE_VectorArray);
 			DATO_BUFFER_EXPECT(_pos + 2 <= _r->_len);
 			return _r->RD<u8>(_pos + 1);
 		}
 
-		// type checks for more complex types
-		DATO_FORCEINLINE bool IsVector(u8 subtype, u8 elemCount) const
+		// type checks
+		DATO_FORCEINLINE bool IsNull() const { return _type == TYPE_Null; }
+		DATO_FORCEINLINE bool IsBool() const { return _type == TYPE_Bool; }
+		bool IsNumber() const
+		{
+			return _type == TYPE_S32 || _type == TYPE_U32 || _type == TYPE_F32
+				|| _type == TYPE_S64 || _type == TYPE_U64 || _type == TYPE_F64;
+		}
+		bool IsVector(u8 subtype, u8 elemCount) const
 		{
 			if (_type == TYPE_Vector)
 			{
@@ -918,11 +928,11 @@ public:
 			}
 			return false;
 		}
-		template<class T> DATO_FORCEINLINE bool IsVectorT(u8 elemCount) const
+		template <class T> DATO_FORCEINLINE bool IsVectorT(u8 elemCount) const
 		{
 			return IsVector(SubtypeInfo<T>::Subtype, elemCount);
 		}
-		DATO_FORCEINLINE bool IsVectorArray(u8 subtype, u8 elemCount) const
+		bool IsVectorArray(u8 subtype, u8 elemCount) const
 		{
 			if (_type == TYPE_VectorArray)
 			{
@@ -932,68 +942,70 @@ public:
 			}
 			return false;
 		}
-		template<class T> DATO_FORCEINLINE bool IsVectorArrayT(u8 elemCount) const
+		template <class T> DATO_FORCEINLINE bool IsVectorArrayT(u8 elemCount) const
 		{
 			return IsVectorArray(SubtypeInfo<T>::Subtype, elemCount);
 		}
 
 		// reading the exact data
-		DATO_FORCEINLINE bool AsBool() const { DATO_INPUT_EXPECT(_type == TYPE_Bool); return _pos != 0; }
-		DATO_FORCEINLINE s32 AsS32() const { DATO_INPUT_EXPECT(_type == TYPE_S32); return _pos; }
-		DATO_FORCEINLINE u32 AsU32() const { DATO_INPUT_EXPECT(_type == TYPE_U32); return _pos; }
-		DATO_FORCEINLINE float AsF32() const { DATO_INPUT_EXPECT(_type == TYPE_F32); return ReadT<float>(&_pos); }
-		DATO_FORCEINLINE s64 AsS64() const { DATO_INPUT_EXPECT(_type == TYPE_S64); return _r->RD<s64>(_pos); }
-		DATO_FORCEINLINE u64 AsU64() const { DATO_INPUT_EXPECT(_type == TYPE_U64); return _r->RD<u64>(_pos); }
-		DATO_FORCEINLINE double AsF64() const { DATO_INPUT_EXPECT(_type == TYPE_F64); return _r->RD<double>(_pos); }
+		inline bool AsBool() const { DATO_INPUT_EXPECT(_type == TYPE_Bool); return _pos != 0; }
+		inline s32 AsS32() const { DATO_INPUT_EXPECT(_type == TYPE_S32); return _pos; }
+		inline u32 AsU32() const { DATO_INPUT_EXPECT(_type == TYPE_U32); return _pos; }
+		inline float AsF32() const { DATO_INPUT_EXPECT(_type == TYPE_F32); return ReadT<f32>(&_pos); }
+		inline s64 AsS64() const { DATO_INPUT_EXPECT(_type == TYPE_S64); return _r->RD<s64>(_pos); }
+		inline u64 AsU64() const { DATO_INPUT_EXPECT(_type == TYPE_U64); return _r->RD<u64>(_pos); }
+		inline double AsF64() const { DATO_INPUT_EXPECT(_type == TYPE_F64); return _r->RD<f64>(_pos); }
 
-		DATO_FORCEINLINE StringMapAccessor AsStringMap() const
+		inline StringMapAccessor AsStringMap() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_StringMap);
 			return { _r, _pos };
 		}
-		DATO_FORCEINLINE IntMapAccessor AsIntMap() const
+		inline IntMapAccessor AsIntMap() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_IntMap);
 			return { _r, _pos };
 		}
-		DATO_FORCEINLINE ArrayAccessor AsArray() const
+		inline ArrayAccessor AsArray() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_Array);
 			return { _r, _pos };
 		}
 
-		DATO_FORCEINLINE StringAccessor<char> AsString8() const
+		inline StringAccessor<char> AsString8() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_String8);
 			return { _r, _pos };
 		}
-		DATO_FORCEINLINE StringAccessor<u16> AsString16() const
+		inline StringAccessor<u16> AsString16() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_String16);
 			return { _r, _pos };
 		}
-		DATO_FORCEINLINE StringAccessor<u32> AsString32() const
+		inline StringAccessor<u32> AsString32() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_String32);
 			return { _r, _pos };
 		}
-		DATO_FORCEINLINE ByteArrayAccessor AsByteArray() const
+		inline ByteArrayAccessor AsByteArray() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_ByteArray);
 			return { _r, _pos };
 		}
 
-		template <class T> DATO_FORCEINLINE VectorAccessor<T> AsVector() const
+		template <class T> inline VectorAccessor<T> AsVector() const
 		{
+			DATO_INPUT_EXPECT(_type == TYPE_Vector);
 			return { _r, _pos };
 		}
-		template <class T> DATO_FORCEINLINE VectorArrayAccessor<T> AsVectorArray() const
+		template <class T> inline VectorArrayAccessor<T> AsVectorArray() const
 		{
+			DATO_INPUT_EXPECT(_type == TYPE_VectorArray);
 			return { _r, _pos };
 		}
 
 		// casts
-		template <class T> T CastToNumber() const
+		template <class T> DATO_NOINLINE T CastToNumber() const
 		{
 			switch (_type)
 			{
@@ -1007,7 +1019,7 @@ public:
 			default: return T(0);
 			}
 		}
-		bool CastToBool() const
+		DATO_NOINLINE bool CastToBool() const
 		{
 			switch (_type)
 			{
@@ -1023,7 +1035,7 @@ public:
 		}
 	};
 
-	bool Init(const void* data, u32 len, const void* prefix = "DATO", u32 prefix_len = 4, u8 ignore_flags = 0)
+	DATO_NOINLINE bool Init(const void* data, u32 len, const void* prefix = "DATO", u32 prefix_len = 4, u8 ignore_flags = 0)
 	{
 		if (prefix_len + 3 > len)
 			return false;
