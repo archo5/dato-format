@@ -18,6 +18,8 @@ using namespace dato;
 
 #define _DATO_CONCAT(a, b) a ## b
 #define DATO_CONCAT(a, b) _DATO_CONCAT(a, b)
+#define _DATO_STRINGIFY(a) #a
+#define DATO_STRINGIFY(a) _DATO_STRINGIFY(a)
 #define DATO_CONFIG DATO_CONCAT(WriterConfig, CONFIG)
 using WRTR = Writer<DATO_CONFIG>;
 using RDR = BufferReader<DATO_CONCAT(ReaderConfig, CONFIG)>;
@@ -36,10 +38,19 @@ static bool streq(const char* a, const char* b)
 	}
 }
 
-static float randf()
+struct LCG
 {
-	return float(rand()) / RAND_MAX;
-}
+	unsigned state = 12345;
+
+	unsigned get()
+	{
+		return state = state * 1664525 + 1013904223;
+	}
+	float getf()
+	{
+		return double(get()) / 0xffffffff;
+	}
+};
 
 void SaveBuffer(const char* filename, WRTR& W)
 {
@@ -116,9 +127,10 @@ static void gen_nodes(int argc, char* argv[])
 
 	WRTR W;
 	{
-		Benchmark B("gen-nodes");
+		Benchmark B("gen-nodes");//, 100000, 10);
 		while (B.Iterate())
 		{
+			LCG lcg;
 			W.~WRTR();
 			new (&W) WRTR("DATO", 4, FLAG_Aligned | FLAG_SortedKeys | FLAG_RelContValRefs, true);
 
@@ -126,10 +138,10 @@ static void gen_nodes(int argc, char* argv[])
 			vrnodes.reserve(count);
 			for (int i = 0; i < count; i++)
 			{
-				float pos[3] = { randf(), randf(), randf() };
+				float pos[3] = { lcg.getf(), lcg.getf(), lcg.getf() };
 				auto kpos = W.WriteStringKey("localPosition");
 				auto vpos = W.WriteVectorT(pos, 3);
-				float rot[4] = { randf(), randf(), randf() };
+				float rot[4] = { lcg.getf(), lcg.getf(), lcg.getf(), lcg.getf() };
 				auto krot = W.WriteStringKey("localRotation");
 				auto vrot = W.WriteVectorT(rot, 4);
 				float scale[4] = { 1, 1, 1 };
@@ -154,7 +166,7 @@ static void gen_nodes(int argc, char* argv[])
 	}
 	printf("size=%u\n", unsigned(W.GetSize()));
 	{
-		Benchmark B("iter-nodes");
+		Benchmark B("iter-nodes");//, 100000, 10);
 		while (B.Iterate())
 		{
 			RDR rdr;
@@ -163,7 +175,15 @@ static void gen_nodes(int argc, char* argv[])
 			rdr.GetRoot().Iterate(it);
 		}
 	}
-	SaveBuffer("nodes.gen.dato", W);
+	SaveBuffer("nodes" DATO_STRINGIFY(CONFIG) ".gen.dato", W);
+	{
+		FILE* fp = fopen("nodes" DATO_STRINGIFY(CONFIG) ".gen.dump.txt", "w");
+		RDR rdr;
+		rdr.Init(W.GetData(), W.GetSize());
+		FILEValueDumperIterator fvdi(fp);
+		rdr.GetRoot().Iterate(fvdi);
+		fclose(fp);
+	}
 }
 
 

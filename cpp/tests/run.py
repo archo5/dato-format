@@ -92,18 +92,18 @@ def BUILDTEST(text):
 def run_test():
 	RUN("clang -o test.exe -Wall -g tests.cpp && test")
 def run_benchinternals():
-	RUN("clang -o benchinternals.exe -Wall -g -O2 benchinternals.cpp benchutil.cpp -lkernel32 && benchinternals")
+	RUN(
+		"clang -o benchinternals.exe -Wall -g -O2"
+		" benchinternals.cpp benchutil.cpp -lkernel32 && benchinternals"
+	)
 def run_benchfiles():
-	print("config=0")
-	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=0 && benchfiles gen-nodes")
-	print("config=1")
-	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=1 && benchfiles gen-nodes")
-	print("config=2")
-	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=2 && benchfiles gen-nodes")
-	print("config=3")
-	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=3 && benchfiles gen-nodes")
-	print("config=4")
-	RUN("clang -o benchfiles.exe -Wall -g -O2 benchfiles.cpp benchutil.cpp -DCONFIG=4 && benchfiles gen-nodes")
+	for i in range(0, 5):
+		print("config =", i)
+		RUN(
+			"clang -o benchfiles.exe -Wall -g -O2"
+			" benchfiles.cpp benchutil.cpp -DCONFIG=%d"
+			" -lkernel32 && benchfiles gen-nodes" % i
+		)
 
 def run_buildtest():
 	print("=== running build tests ===")
