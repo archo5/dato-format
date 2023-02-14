@@ -22,7 +22,11 @@
 #  define DATO_BREAKPOINT __debugbreak()
 #else
 #  define DATO_FORCEINLINE inline __attribute__((always_inline))
-#  define DATO_BREAKPOINT __builtin_debugtrap()
+#  ifdef __clang__
+#    define DATO_BREAKPOINT __builtin_debugtrap()
+#  else
+#    define DATO_BREAKPOINT __builtin_trap() // TODO
+#  endif
 #endif
 
 // validation - triggers a code breakpoint when hitting the failure condition

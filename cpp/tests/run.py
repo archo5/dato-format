@@ -125,7 +125,9 @@ def run_benchfiles():
 	for i in range(0, 5):
 		print("config =", i)
 		RUN(
-			"clang -o benchfiles.exe -Wall -g -O2 -fno-exceptions -fno-rtti"
+			"clang++ -o benchfiles.exe -Wall -g -O2 -fno-exceptions -fno-rtti"
+			#" -falign-functions=16 -falign-loops=16 -falign-jumps=16 -falign-labels=16"
+			" -mllvm -align-all-functions=4 -mllvm -align-all-nofallthru-blocks=4"
 			" benchfiles.cpp benchutil.cpp -DCONFIG=%d %s"
 			" -lkernel32 && benchfiles gen-nodes" % (i, validate_defs)
 		)

@@ -13,7 +13,11 @@
 #else
 #  define DATO_FORCEINLINE inline __attribute__((always_inline))
 #  define DATO_NOINLINE __attribute__((noinline))
-#  define DATO_BREAKPOINT __builtin_debugtrap()
+#  ifdef __clang__
+#    define DATO_BREAKPOINT __builtin_debugtrap()
+#  else
+#    define DATO_BREAKPOINT __builtin_trap() // TODO
+#  endif
 #endif
 
 // validation - triggers a code breakpoint when hitting the failure condition
@@ -388,12 +392,37 @@ private:
 	bool KeyEquals(u32 kpos, const char* str) const
 	{
 		_cfg.ReadKeyLength(_data, _len, kpos);
-		return strcmp(str, &_data[kpos]) == 0;
+		//return strcmp(str, &_data[kpos]) == 0;
+		const char* kp = &_data[kpos];
+		size_t i = 0;
+		for (;;)
+		{
+			char sc = str[i];
+			char kc = kp[i];
+			if (sc - kc)
+				return false;
+			if (sc == 0)
+				return true;
+			i++;
+		}
 	}
 	int KeyCompare(u32 kpos, const char* str) const
 	{
 		_cfg.ReadKeyLength(_data, _len, kpos);
-		return strcmp(str, &_data[kpos]);
+		//return strcmp(str, &_data[kpos]);
+		const char* kp = &_data[kpos];
+		size_t i = 0;
+		for (;;)
+		{
+			char sc = str[i];
+			char kc = kp[i];
+			int diff = sc - kc;
+			if (diff)
+				return diff;
+			if (sc == 0)
+				return 0;
+			i++;
+		}
 	}
 	// compares the size first, then all of bytes
 	bool KeyEquals(u32 kpos, const void* mem, size_t lenMem) const
@@ -419,12 +448,11 @@ public:
 	struct MapAccessor
 	{
 		Reader* _r;
-		u32 _pos;
 		u32 _size;
 		u32 _objpos;
 
-		DATO_FORCEINLINE MapAccessor() : _r(nullptr), _pos(0), _size(0), _objpos(0) {}
-		MapAccessor(Reader* r, u32 pos) : _r(r), _pos(pos)
+		DATO_FORCEINLINE MapAccessor() : _r(nullptr), _size(0), _objpos(0) {}
+		MapAccessor(Reader* r, u32 pos) : _r(r)
 		{
 			_objpos = pos;
 			_size = r->_cfg.ReadObjectSize(r->_data, r->_len, _objpos);
@@ -669,12 +697,11 @@ public:
 		};
 
 		Reader* _r;
-		u32 _pos;
 		u32 _size;
 		u32 _arrpos;
 
-		DATO_FORCEINLINE ArrayAccessor() : _r(nullptr), _pos(0), _size(0), _arrpos(0) {}
-		ArrayAccessor(Reader* r, u32 pos) : _r(r), _pos(pos)
+		DATO_FORCEINLINE ArrayAccessor() : _r(nullptr), _size(0), _arrpos(0) {}
+		ArrayAccessor(Reader* r, u32 pos) : _r(r)
 		{
 			_arrpos = pos;
 			_size = r->_cfg.ReadArrayLength(r->_data, r->_len, _arrpos);
