@@ -114,7 +114,6 @@ template <> struct SubtypeInfo<f64> { enum { Subtype = SUBTYPE_F64 }; };
 
 static const u8 FLAG_Aligned = 1 << 0;
 static const u8 FLAG_SortedKeys = 1 << 1;
-static const u8 FLAG_RelContValRefs = 1 << 2; // relative container value references
 
 #ifndef DATO_MEMCPY
 #  define DATO_MEMCPY memcpy
@@ -449,7 +448,7 @@ public:
 			u32 tpos = _objpos + _size * 8 + u32(i);
 			u32 val = _r->RD<u32>(vpos);
 			u8 type = _r->RD<u8>(tpos);
-			if (_r->_flags & FLAG_RelContValRefs && IsReferenceType(type))
+			if (IsReferenceType(type))
 				val = _objpos - val;
 			return { _r, val, type };
 		}
@@ -704,7 +703,7 @@ public:
 			u32 tpos = _arrpos + _size * 4 + u32(i);
 			u32 val = _r->RD<u32>(vpos);
 			u8 type = _r->RD<u8>(tpos);
-			if (_r->_flags & FLAG_RelContValRefs && IsReferenceType(type))
+			if (IsReferenceType(type))
 				val = _arrpos - val;
 			return { _r, val, type };
 		}

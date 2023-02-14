@@ -582,7 +582,7 @@ struct ExpectationBuilder
 	puts(""); /*printf("- root type=%d\n", int(root.GetType()));*/ \
 }
 
-#define EBCFG0PFX(t) EBElement("DATO", 4), 0, 0x7, t, A(1)
+#define EBCFG0PFX(t) EBElement("DATO", 4), 0, 0x3, t, A(1)
 
 void TestBasicStructures()
 {

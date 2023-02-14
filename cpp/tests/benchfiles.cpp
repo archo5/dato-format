@@ -134,7 +134,7 @@ static void gen_nodes(int argc, char* argv[])
 		{
 			LCG lcg;
 			W.~WRTR();
-			new (&W) WRTR("DATO", 4, FLAG_Aligned | FLAG_SortedKeys | FLAG_RelContValRefs, true);
+			new (&W) WRTR("DATO", 4, FLAG_Aligned | FLAG_SortedKeys, true);
 			W.Reserve(1024 * 1024);
 
 			std::vector<ValueRef> vrnodes;

@@ -98,7 +98,7 @@ FILE =
 	PROPERTY-BYTE
 	TYPE
 	ALIGN(4)
-	VALUE # VREF ignores the flag (as the file header not an array or map) and is always absolute
+	VALUE # VREF is instead REF (absolute)
 }
 
 PREFIX-BYTES = "DATO" | [user-defined]
@@ -109,7 +109,7 @@ SIZE-ENC-CONFIG-BYTE = [0;4] | [128;255]
 # - 5-127 are reserved
 # - 128-255 can be used for specifying application-specific configurations
 
-PROPERTY-BYTE = [0 1 2 R R R R R]
+PROPERTY-BYTE = [0 1 R R R R R R]
 # values are flags:
 # - bit 0 specifies whether the file is aligned (1 = yes)
 #	- alignment applies to every element larger than one byte - they are expected ..
@@ -117,11 +117,7 @@ PROPERTY-BYTE = [0 1 2 R R R R R]
 #	.. uint32 could be placed at offset 24 (4*6) or 52 (4*13) but not 37
 # - bit 1 specifies whether the keys are sorted (1 = yes)
 #	- integer keys are expected to be sorted by value (uint32), string keys by content (comparing byte values)
-# - bit 2 specifies whether array/map references are saved absolute or relative to starting position
-#	- (1 = relative to position after alignment and length, 0 = absolute)
-#	- this makes serialization and parsing slightly slower and more complicated ..
-#	.. but significantly improves the compressibility of the data
-# - bits 3-7 are reserved
+# - bits 2-7 are reserved
 
 ALIGN(...) = [empty] ... 0[N]
 # if alignment is enabled, this contains 0 or more zero-bytes, to align the in-file position of each subsequent value contained in the structure to its natural (or explicitly specified) alignment
@@ -131,13 +127,10 @@ REF(T) = uint32
 # in this spec, T optionally specifies the type that is expected to be at the end of the reference
 
 VREF(T) = uint32
-# -- if PROPERTY-BYTE [bitwise-and] bit-4 (relative refs) --
 # an offset backwards from the array/map "origin" (aligned offset to data after size)
 # absolute offset = array/map origin - VREF-value
 # relative references to values tend to compress better since referenced values are typically nearby
 # in this spec, T optionally specifies the type that is expected to be at the end of the reference
-# -- otherwise --
-# same as REF(T)
 
 MAP =
 {

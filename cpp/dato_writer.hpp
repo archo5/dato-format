@@ -108,7 +108,6 @@ template <> struct SubtypeInfo<f64> { enum { Subtype = SUBTYPE_F64 }; };
 
 static const u8 FLAG_Aligned = 1 << 0;
 static const u8 FLAG_SortedKeys = 1 << 1;
-static const u8 FLAG_RelContValRefs = 1 << 2; // relative container value references
 
 #ifndef DATO_MEMCPY
 #  define DATO_MEMCPY memcpy
@@ -829,7 +828,7 @@ struct Writer : WriterBase
 	(
 		const char* prefix = "DATO",
 		u32 pfxsize = 4,
-		u8 flags = FLAG_Aligned | FLAG_SortedKeys | FLAG_RelContValRefs,
+		u8 flags = FLAG_Aligned | FLAG_SortedKeys,
 		bool skipDuplicateKeys = true
 	)
 		: WriterBase(prefix, pfxsize, Config::Identifier(), flags)
@@ -955,21 +954,14 @@ struct Writer : WriterBase
 
 	template <class EntryT> void _WriteMapValuesAndTypes(const EntryT* entries, u32 count, u32 basepos)
 	{
-		if (_flags & FLAG_RelContValRefs)
+		for (u32 i = 0; i < count; i++)
 		{
-			for (u32 i = 0; i < count; i++)
-			{
-				u32 vp = entries[i].value.pos;
-				if (IsReferenceType(entries[i].value.type))
-					vp = basepos - vp;
-				AddU32(vp);
-			}
+			u32 vp = entries[i].value.pos;
+			if (IsReferenceType(entries[i].value.type))
+				vp = basepos - vp;
+			AddU32(vp);
 		}
-		else
-		{
-			for (u32 i = 0; i < count; i++)
-				AddU32(entries[i].value.pos);
-		}
+
 		for (u32 i = 0; i < count; i++)
 			AddByte(entries[i].value.type);
 	}
@@ -978,21 +970,15 @@ struct Writer : WriterBase
 	{
 		u32 pos = Config::WriteArrayLength(*this, count, Align(4), nullptr, 0);
 		u32 basepos = GetSize();
-		if (_flags & FLAG_RelContValRefs)
+
+		for (u32 i = 0; i < count; i++)
 		{
-			for (u32 i = 0; i < count; i++)
-			{
-				u32 vp = values[i].pos;
-				if (IsReferenceType(values[i].type))
-					vp = basepos - vp;
-				AddU32(vp);
-			}
+			u32 vp = values[i].pos;
+			if (IsReferenceType(values[i].type))
+				vp = basepos - vp;
+			AddU32(vp);
 		}
-		else
-		{
-			for (u32 i = 0; i < count; i++)
-				AddU32(values[i].pos);
-		}
+
 		for (u32 i = 0; i < count; i++)
 			AddByte(values[i].type);
 		return { TYPE_Array, pos };
