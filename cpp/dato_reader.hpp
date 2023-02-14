@@ -227,7 +227,7 @@ struct ReaderConfig0
 
 	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU32(DATO_READSIZE_PASS); }
-	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	DATO_FORCEINLINE u32 ReadMapSize(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU32(DATO_READSIZE_PASS); }
 	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU32(DATO_READSIZE_PASS); }
@@ -241,7 +241,7 @@ struct ReaderConfig1
 
 	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU32(DATO_READSIZE_PASS); }
-	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	DATO_FORCEINLINE u32 ReadMapSize(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU32(DATO_READSIZE_PASS); }
 	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU32(DATO_READSIZE_PASS); }
@@ -255,7 +255,7 @@ struct ReaderConfig2
 
 	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
-	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	DATO_FORCEINLINE u32 ReadMapSize(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
 	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
@@ -269,7 +269,7 @@ struct ReaderConfig3
 
 	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU8(DATO_READSIZE_PASS); }
-	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	DATO_FORCEINLINE u32 ReadMapSize(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU8(DATO_READSIZE_PASS); }
 	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU32(DATO_READSIZE_PASS); }
@@ -283,7 +283,7 @@ struct ReaderConfig4
 
 	DATO_FORCEINLINE u32 ReadKeyLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU8(DATO_READSIZE_PASS); }
-	DATO_FORCEINLINE u32 ReadObjectSize(DATO_READSIZE_ARGS) const
+	DATO_FORCEINLINE u32 ReadMapSize(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU8(DATO_READSIZE_PASS); }
 	DATO_FORCEINLINE u32 ReadArrayLength(DATO_READSIZE_ARGS) const
 	{ return ReadSizeU8X32(DATO_READSIZE_PASS); }
@@ -296,7 +296,7 @@ struct ReaderAdaptiveConfig
 	typedef u32 ReadFunc(DATO_READSIZE_ARGS);
 
 	ReadFunc* keyLength = nullptr;
-	ReadFunc* objectSize = nullptr;
+	ReadFunc* mapSize = nullptr;
 	ReadFunc* arrayLength = nullptr;
 	ReadFunc* valueLength = nullptr;
 
@@ -306,31 +306,31 @@ struct ReaderAdaptiveConfig
 		{
 		case 0:
 			keyLength = &ReadSizeU32;
-			objectSize = &ReadSizeU32;
+			mapSize = &ReadSizeU32;
 			arrayLength = &ReadSizeU32;
 			valueLength = &ReadSizeU32;
 			return true;
 		case 1:
 			keyLength = &ReadSizeU32;
-			objectSize = &ReadSizeU32;
+			mapSize = &ReadSizeU32;
 			arrayLength = &ReadSizeU32;
 			valueLength = &ReadSizeU8X32;
 			return true;
 		case 2:
 			keyLength = &ReadSizeU8X32;
-			objectSize = &ReadSizeU8X32;
+			mapSize = &ReadSizeU8X32;
 			arrayLength = &ReadSizeU8X32;
 			valueLength = &ReadSizeU8X32;
 			return true;
 		case 3:
 			keyLength = &ReadSizeU8;
-			objectSize = &ReadSizeU8;
+			mapSize = &ReadSizeU8;
 			arrayLength = &ReadSizeU32;
 			valueLength = &ReadSizeU32;
 			return true;
 		case 4:
 			keyLength = &ReadSizeU8;
-			objectSize = &ReadSizeU8;
+			mapSize = &ReadSizeU8;
 			arrayLength = &ReadSizeU8X32;
 			valueLength = &ReadSizeU8X32;
 			return true;
@@ -339,7 +339,7 @@ struct ReaderAdaptiveConfig
 	}
 
 	u32 ReadKeyLength(DATO_READSIZE_ARGS) const { return keyLength(DATO_READSIZE_PASS); }
-	u32 ReadObjectSize(DATO_READSIZE_ARGS) const { return objectSize(DATO_READSIZE_PASS); }
+	u32 ReadMapSize(DATO_READSIZE_ARGS) const { return mapSize(DATO_READSIZE_PASS); }
 	u32 ReadArrayLength(DATO_READSIZE_ARGS) const { return arrayLength(DATO_READSIZE_PASS); }
 	u32 ReadValueLength(DATO_READSIZE_ARGS) const { return valueLength(DATO_READSIZE_PASS); }
 };
@@ -455,7 +455,7 @@ public:
 		MapAccessor(Reader* r, u32 pos) : _r(r)
 		{
 			_objpos = pos;
-			_size = r->_cfg.ReadObjectSize(r->_data, r->_len, _objpos);
+			_size = r->_cfg.ReadMapSize(r->_data, r->_len, _objpos);
 			DATO_BUFFER_EXPECT(pos + 9 * _size <= r->_len);
 		}
 

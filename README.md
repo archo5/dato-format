@@ -15,12 +15,12 @@ This format combines the following properties:
 - **Direct access** - the data can be accessed directly, without pre-parsing it, for reduced total parsing time
 	- The data can be optionally aligned to further improve parsing speed on CPUs that don't support unaligned loads natively
 - **Generic** and **Traversable** - there are various built-in structures for storing most data, which allows the following:
-	- Changing the format of any object while retaining backwards compatibility
+	- Changing the format of any object (string and int map) while retaining backwards compatibility
 	- Partially inspecting and validating the data without having to knowing the entire format including names of stored values and special meanings of byte ranges
 - **Customizable** - the exact details of the format can be optimized for the particular application:
 	- It is possible to add more data types
 	- The encoding of various length/size values can be changed to optimize for size or performance
-	- Object keys can be either names (for readability) or 32-bit integers (for reduced size and parsing speed)
+	- Map keys can be either names (for readability) or 32-bit integers (for reduced size and parsing speed)
 		- Integer keys can be hashes, enum values, indices or FOURCC codes
 	- Different string types can be used (to match the application's internal string format)
 	- The prefix of the file can be changed
@@ -46,7 +46,7 @@ Apart from the obvious (e.g. downsides of a binary format) don't use it if:
 	- (it allows hand-optimizing heavy reuse but will compress relatively poorly and create high structural overhead compared to other formats)
 	- This includes most use cases where files are constantly sent over the network.
 - your data has more structures than numbers
-	- While this format can easily store lots of numbers fairly efficiently, it will not be as efficient if there are lots of generic arrays and objects instead.
+	- While this format can easily store lots of numbers fairly efficiently, it will not be as efficient if there are lots of generic arrays and maps instead.
 
 Some tradeoffs however may be explored in the future (including finding ways to make the format more friendly to compression, possibly at the cost of a short pre-pass).
 
@@ -60,25 +60,24 @@ Size encoding configurations:
 - **0**: all sizes are 32-bit
 	- Optimizes for reading speed at the cost of size
 	- Compatible with all data
-- **1**: key, object and generic array sizes are 32-bit, typed array sizes are variable-length (8-40 bits)
+- **1**: key, map and generic array sizes are 32-bit, typed array sizes are variable-length (8-40 bits)
 	- Shifts the optimization towards size at a minor cost to reading speed
 	- Compatible with all data
 - **2**: all sizes are variable-length (8-40 bits)
 	- Optimizes for size at the cost of reading speed
 	- Compatible with all data
-- **3**: key and object sizes are 8-bit, array sizes are 32-bit
+- **3**: key and map sizes are 8-bit, array sizes are 32-bit
 	- Optimizes for reading speed first, then size
-	- Breaks compatibility with objects exceeding 255 properties and keys longer than 255 bytes
-- **4**: key and object sizes are 8-bit, array sizes are variable-length (8-40 bits)
+	- Breaks compatibility with maps exceeding 255 properties and string keys longer than 255 bytes
+- **4**: key and map sizes are 8-bit, array sizes are variable-length (8-40 bits)
 	- Optimizes for size first, then reading speed
-	- Breaks compatibility with objects exceeding 255 properties and keys longer than 255 bytes
+	- Breaks compatibility with maps exceeding 255 properties and string keys longer than 255 bytes
 - Custom configurations can be created as well.
 
 Additional options:
 
 - Alignment can be disabled to reduce size at the cost of traversal speed (at least on some platforms).
 - Key sorting can be enabled to improve lookup speed at the cost of serialization speed.
-- Integer keys can be enabled together with using key prehashing/enumeration in user code to improve the speed of both serialization and parsing, as well reduce the file size, at the cost of reduced or more complicated inspectability of the file, and having to make the key mapping logic an unremovable part of the format.
 
 ## The file format specification (**warning: not finalized at this point - minor details may change**)
 
@@ -136,7 +135,7 @@ MAP =
 {
 	ALIGN(SIZE(MAP), 4) # for mixed-value sizes, the alignment must take into account all the values
 	# <- start (where references point to)
-	size = SIZE(MAP) # the number of properties in the object
+	size = SIZE(MAP) # the number of properties in the map
 	# <- origin (for relative value refs)
 	keys = KEY[size] # no duplicates allowed!
 	values = VALUE[size]
@@ -258,12 +257,12 @@ SUBTYPE = uint8 # first 4 bits and 0-9 only, the remaining values are reserved
 
 ## What was considered and rejected for the format?
 
-- **Interleaved object entries**:
+- **Interleaved map entries**:
 	- They required the largest alignment value to be applied for the entire entry (making it 12 bytes big), which effectively added 3 bytes of padding due to the type being 1 byte big initially.
-	- For bigger objects, they would make it necessary to pull unused memory into cache before iterating the keys to find the necessary value.
-- **Objects/arrays not requiring temporary storage to serialize**:
-	- This would lead to a huge increase in overall complexity and size due to requiring a linked/skip list of object fields/array elements. This linked list would also make it impossible to do a binary search on object keys and a fast element lookup on arrays.
-- **Putting types with the value (as opposed to with the object that refers to the value)**:
+	- For bigger maps, they would make it necessary to pull unused memory into cache before iterating the keys to find the necessary value.
+- **Maps/arrays not requiring temporary storage to serialize**:
+	- This would lead to a huge increase in overall complexity and size due to requiring a linked/skip list of map/array elements. This linked list would also make it impossible to do a binary search on map keys and a fast element lookup on arrays.
+- **Putting types with the value (as opposed to with the map/array that refers to the value)**:
 	- This removes the possibility of inlining smaller values effectively
 		- For example, currently storing any 32-bit value requires 1 byte for type and 4 bytes for the value.
 		- By storing the type with the value, it would be needed to store 4 bytes for the reference + the 1+4 bytes listed above.
@@ -273,8 +272,8 @@ SUBTYPE = uint8 # first 4 bits and 0-9 only, the remaining values are reserved
 	- That said, it would also remove some complexity around integer casting which is why it was considered in the first place.
 	- This may be revisited in the future if it's found to be beneficial.
 - **More (elaborate) options for variable-length size encoding**:
-	- Since in some parser implementations the size of arrays, objects, and their keys may be retrieved from the file many times, it was important that this was still fast enough to do. Variable length integers reduce performance by creating dependencies between each parsing step, which requires the CPU to see the results of each operation before it can do the next thing. Even the U8+U32 encoding in some cases was found to make parsing slower by about 15% compared to the other options.
-- **Multiple (or flagged) object/array/etc. types for different length encodings**:
+	- Since in some parser implementations the size of arrays, maps, and their keys may be retrieved from the file many times, it was important that this was still fast enough to do. Variable length integers reduce performance by creating dependencies between each parsing step, which requires the CPU to see the results of each operation before it can do the next thing. Even the U8+U32 encoding in some cases was found to make parsing slower by about 15% compared to the other options.
+- **Multiple (or flagged) map/array/etc. types for different length encodings**:
 	- The idea was that e.g. one array type had an uint8 length value and another one had uint32.
 	- This would make a parser more difficult to test by creating more code paths that would be rarely used (which would make them prone to breaking at the exact point when they become useful).
 	- This would also reduce the number of available indices for additional types, although we are unlikely to run out of them soon - except in the case when flagging is used (such as by dedicating some top bits for different encodings).
@@ -288,6 +287,6 @@ SUBTYPE = uint8 # first 4 bits and 0-9 only, the remaining values are reserved
 		- Some are fine to set project-wide limitations in the name of performance while others like to keep their options open.
 - **Entry point at the end of the file** ([FlexBuffers](https://google.github.io/flatbuffers/flatbuffers_internals.html))
 	- The issue is that it's difficult to ensure that we have the entire file if we expect the end of the file (whatever it may be) to just make sense.
-- **Adaptive overall sizing of integer vectors defining generic objects/arrays** ([FlexBuffers](https://google.github.io/flatbuffers/flatbuffers_internals.html))
+- **Adaptive overall sizing of integer vectors defining generic maps/arrays** ([FlexBuffers](https://google.github.io/flatbuffers/flatbuffers_internals.html))
 	- [Requires branching to read the contents of the vector across many hot paths.](https://github.com/google/flatbuffers/blob/v23.1.21/include/flatbuffers/flexbuffers.h#L133)
-	- Would also require smaller integer types to take full advantage of this, however in most cases objects will contain 32 bit integers, floating point values or in some cases references which effectively negate any benefits from selectively reduced sizing by requiring everything else to be 32 bits wide as well.
+	- Would also require smaller integer types to take full advantage of this, however in most cases maps will contain 32 bit values or in some cases references which effectively negate any benefits from selectively reduced sizing by requiring everything else to be 32 bits wide as well.
