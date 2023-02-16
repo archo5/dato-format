@@ -137,6 +137,18 @@ template <class Config> void TestReader()
 		VectorUser(dyn.template AsVector<f64>());
 	}
 	{
+		VectorUser(dyn.template AsVector<s8>(1));
+		VectorUser(dyn.template AsVector<u8>(1));
+		VectorUser(dyn.template AsVector<s16>(1));
+		VectorUser(dyn.template AsVector<u16>(1));
+		VectorUser(dyn.template AsVector<s32>(1));
+		VectorUser(dyn.template AsVector<u32>(1));
+		VectorUser(dyn.template AsVector<s64>(1));
+		VectorUser(dyn.template AsVector<u64>(1));
+		VectorUser(dyn.template AsVector<f32>(1));
+		VectorUser(dyn.template AsVector<f64>(1));
+	}
+	{
 		VectorArrayUser(dyn.template AsVectorArray<s8>());
 		VectorArrayUser(dyn.template AsVectorArray<u8>());
 		VectorArrayUser(dyn.template AsVectorArray<s16>());
@@ -147,6 +159,18 @@ template <class Config> void TestReader()
 		VectorArrayUser(dyn.template AsVectorArray<u64>());
 		VectorArrayUser(dyn.template AsVectorArray<f32>());
 		VectorArrayUser(dyn.template AsVectorArray<f64>());
+	}
+	{
+		VectorArrayUser(dyn.template AsVectorArray<s8>(1));
+		VectorArrayUser(dyn.template AsVectorArray<u8>(1));
+		VectorArrayUser(dyn.template AsVectorArray<s16>(1));
+		VectorArrayUser(dyn.template AsVectorArray<u16>(1));
+		VectorArrayUser(dyn.template AsVectorArray<s32>(1));
+		VectorArrayUser(dyn.template AsVectorArray<u32>(1));
+		VectorArrayUser(dyn.template AsVectorArray<s64>(1));
+		VectorArrayUser(dyn.template AsVectorArray<u64>(1));
+		VectorArrayUser(dyn.template AsVectorArray<f32>(1));
+		VectorArrayUser(dyn.template AsVectorArray<f64>(1));
 	}
 	{
 		dyn.TryGetStringMap();
@@ -170,6 +194,18 @@ template <class Config> void TestReader()
 		dyn.template TryGetVector<f64>();
 	}
 	{
+		dyn.template TryGetVector<s8>(1);
+		dyn.template TryGetVector<u8>(1);
+		dyn.template TryGetVector<s16>(1);
+		dyn.template TryGetVector<u16>(1);
+		dyn.template TryGetVector<s32>(1);
+		dyn.template TryGetVector<u32>(1);
+		dyn.template TryGetVector<s64>(1);
+		dyn.template TryGetVector<u64>(1);
+		dyn.template TryGetVector<f32>(1);
+		dyn.template TryGetVector<f64>(1);
+	}
+	{
 		dyn.template TryGetVectorArray<s8>();
 		dyn.template TryGetVectorArray<u8>();
 		dyn.template TryGetVectorArray<s16>();
@@ -180,6 +216,18 @@ template <class Config> void TestReader()
 		dyn.template TryGetVectorArray<u64>();
 		dyn.template TryGetVectorArray<f32>();
 		dyn.template TryGetVectorArray<f64>();
+	}
+	{
+		dyn.template TryGetVectorArray<s8>(1);
+		dyn.template TryGetVectorArray<u8>(1);
+		dyn.template TryGetVectorArray<s16>(1);
+		dyn.template TryGetVectorArray<u16>(1);
+		dyn.template TryGetVectorArray<s32>(1);
+		dyn.template TryGetVectorArray<u32>(1);
+		dyn.template TryGetVectorArray<s64>(1);
+		dyn.template TryGetVectorArray<u64>(1);
+		dyn.template TryGetVectorArray<f32>(1);
+		dyn.template TryGetVectorArray<f64>(1);
 	}
 	{
 		dyn.template CastToNumber<s32>();

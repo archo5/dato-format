@@ -9,15 +9,13 @@
 #ifdef _MSC_VER
 #  define DATO_FORCEINLINE __forceinline
 #  define DATO_NOINLINE __declspec(noinline)
-#  define DATO_BREAKPOINT __debugbreak()
+extern "C" void __ud2(void);
+#  pragma intrinsic(__ud2)
+#  define DATO_CRASH _dato_error()
 #else
 #  define DATO_FORCEINLINE inline __attribute__((always_inline))
 #  define DATO_NOINLINE __attribute__((noinline))
-#  ifdef __clang__
-#    define DATO_BREAKPOINT __builtin_debugtrap()
-#  else
-#    define DATO_BREAKPOINT __builtin_trap() // TODO
-#  endif
+#  define DATO_CRASH __builtin_trap()
 #endif
 
 // validation - triggers a code breakpoint when hitting the failure condition
@@ -32,7 +30,7 @@
 #endif
 
 #if DATO_VALIDATE_BUFFERS
-#  define DATO_BUFFER_EXPECT(x) if (!(x)) DATO_BREAKPOINT
+#  define DATO_BUFFER_EXPECT(x) if (!(x)) DATO_CRASH
 #else
 #  define DATO_BUFFER_EXPECT(x)
 #endif
@@ -47,7 +45,7 @@
 #endif
 
 #if DATO_VALIDATE_INPUTS
-#  define DATO_INPUT_EXPECT(x) if (!(x)) DATO_BREAKPOINT
+#  define DATO_INPUT_EXPECT(x) if (!(x)) DATO_CRASH
 #else
 #  define DATO_INPUT_EXPECT(x)
 #endif
@@ -57,6 +55,10 @@ namespace dato {
 
 #ifndef DATO_COMMON_DEFS
 #define DATO_COMMON_DEFS
+
+#ifdef _MSC_VER
+[[noreturn]] __forceinline void _dato_error() { __ud2(); }
+#endif
 
 typedef signed char s8;
 typedef unsigned char u8;
@@ -397,8 +399,8 @@ private:
 		size_t i = 0;
 		for (;;)
 		{
-			char sc = str[i];
-			char kc = kp[i];
+			u8 sc = str[i];
+			u8 kc = kp[i];
 			if (sc - kc)
 				return false;
 			if (sc == 0)
@@ -414,8 +416,8 @@ private:
 		size_t i = 0;
 		for (;;)
 		{
-			char sc = str[i];
-			char kc = kp[i];
+			u8 sc = str[i];
+			u8 kc = kp[i];
 			int diff = sc - kc;
 			if (diff)
 				return diff;
@@ -799,6 +801,12 @@ public:
 			it.OnValueString(this->_data, this->_size);
 		}
 	};
+	DATO_FORCEINLINE void ParseVectorAccessorPrefix(u32& pos, u8& outSubtype, u8& outElemCount)
+	{
+		DATO_BUFFER_EXPECT(pos + 2 <= _len);
+		outSubtype = RD<u8>(pos++);
+		outElemCount = RD<u8>(pos++);
+	}
 	template <class T>
 	struct VectorAccessor
 	{
@@ -807,13 +815,9 @@ public:
 		u8 _elemCount;
 
 		DATO_FORCEINLINE VectorAccessor() : _data(nullptr), _subtype(0), _elemCount(0) {}
-		VectorAccessor(Reader* r, u32 pos)
+		VectorAccessor(Reader* r, u32 pos, u8 st, u8 ec) : _subtype(st), _elemCount(ec)
 		{
-			DATO_BUFFER_EXPECT(pos + 2 <= r->_len);
-			_subtype = r->RD<u8>(pos++);
-			DATO_INPUT_EXPECT(_subtype == SubtypeInfo<T>::Subtype);
-			_elemCount = r->RD<u8>(pos++);
-			DATO_BUFFER_EXPECT(pos + sizeof(T) * _elemCount <= r->_len);
+			DATO_BUFFER_EXPECT(pos + sizeof(T) * ec <= r->_len);
 			// will not be dereferenced until ReadT but casting early for simplified code
 			_data = (const T*) (const void*) (r->_data + pos);
 		}
@@ -861,12 +865,8 @@ public:
 		u32 _size;
 
 		DATO_FORCEINLINE VectorArrayAccessor() : _data(nullptr), _subtype(0), _elemCount(0), _size(0) {}
-		VectorArrayAccessor(Reader* r, u32 pos)
+		VectorArrayAccessor(Reader* r, u32 pos, u8 st, u8 ec) : _subtype(st), _elemCount(ec)
 		{
-			DATO_BUFFER_EXPECT(pos + 2 <= r->_len);
-			_subtype = r->RD<u8>(pos++);
-			DATO_INPUT_EXPECT(_subtype == SubtypeInfo<T>::Subtype);
-			_elemCount = r->RD<u8>(pos++);
 			_size = r->_cfg.ReadValueLength(r->_data, r->_len, pos);
 			DATO_BUFFER_EXPECT(pos + sizeof(T) * _elemCount * _size <= r->_len);
 			// will not be dereferenced until ReadT but casting early for simplified code
@@ -1048,12 +1048,42 @@ public:
 		template <class T> inline VectorAccessor<T> AsVector() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_Vector);
-			return { _r, _pos };
+			u32 pos = _pos;
+			u8 subtype, elemCount;
+			_r->ParseVectorAccessorPrefix(pos, subtype, elemCount);
+			DATO_INPUT_EXPECT(subtype == SubtypeInfo<T>::Subtype);
+			return { _r, pos, subtype, elemCount };
+		}
+		template <class T> inline VectorAccessor<T> AsVector(u16 expectedElemCount) const
+		{
+			DATO_INPUT_EXPECT(_type == TYPE_Vector);
+			u32 pos = _pos;
+			u8 subtype, elemCount;
+			_r->ParseVectorAccessorPrefix(pos, subtype, elemCount);
+			DATO_INPUT_EXPECT(subtype == SubtypeInfo<T>::Subtype);
+			(void)expectedElemCount;
+			DATO_INPUT_EXPECT(elemCount == expectedElemCount);
+			return { _r, pos, subtype, elemCount };
 		}
 		template <class T> inline VectorArrayAccessor<T> AsVectorArray() const
 		{
 			DATO_INPUT_EXPECT(_type == TYPE_VectorArray);
-			return { _r, _pos };
+			u32 pos = _pos;
+			u8 subtype, elemCount;
+			_r->ParseVectorAccessorPrefix(pos, subtype, elemCount);
+			DATO_INPUT_EXPECT(subtype == SubtypeInfo<T>::Subtype);
+			return { _r, pos, subtype, elemCount };
+		}
+		template <class T> inline VectorArrayAccessor<T> AsVectorArray(u16 expectedElemCount) const
+		{
+			DATO_INPUT_EXPECT(_type == TYPE_VectorArray);
+			u32 pos = _pos;
+			u8 subtype, elemCount;
+			_r->ParseVectorAccessorPrefix(pos, subtype, elemCount);
+			DATO_INPUT_EXPECT(subtype == SubtypeInfo<T>::Subtype);
+			(void)expectedElemCount;
+			DATO_INPUT_EXPECT(elemCount == expectedElemCount);
+			return { _r, pos, subtype, elemCount };
 		}
 
 		// reading data with validation (to avoid double validation)
@@ -1104,32 +1134,48 @@ public:
 		template <class T> inline VectorAccessor<T> TryGetVector() const
 		{
 			if (_type == TYPE_Vector)
-				return { _r, _pos };
+			{
+				u32 pos = _pos;
+				u8 st, ec;
+				_r->ParseVectorAccessorPrefix(pos, st, ec);
+				if (st == SubtypeInfo<T>::Subtype)
+					return { _r, pos, st, ec };
+			}
 			return {};
 		}
-		template <class T> inline VectorAccessor<T> TryGetVector(u16 elemCount) const
+		template <class T> inline VectorAccessor<T> TryGetVector(u16 expectedElemCount) const
 		{
 			if (_type == TYPE_Vector)
 			{
-				VectorAccessor<T> v(_r, _pos);
-				if (v.GetElementCount() == elemCount)
-					return v;
+				u32 pos = _pos;
+				u8 st, ec;
+				_r->ParseVectorAccessorPrefix(pos, st, ec);
+				if (st == SubtypeInfo<T>::Subtype && ec == expectedElemCount)
+					return { _r, pos, st, ec };
 			}
 			return {};
 		}
 		template <class T> inline VectorArrayAccessor<T> TryGetVectorArray() const
 		{
 			if (_type == TYPE_VectorArray)
-				return { _r, _pos };
+			{
+				u32 pos = _pos;
+				u8 st, ec;
+				_r->ParseVectorAccessorPrefix(pos, st, ec);
+				if (st == SubtypeInfo<T>::Subtype)
+					return { _r, pos, st, ec };
+			}
 			return {};
 		}
-		template <class T> inline VectorArrayAccessor<T> TryGetVectorArray(u16 elemCount) const
+		template <class T> inline VectorArrayAccessor<T> TryGetVectorArray(u16 expectedElemCount) const
 		{
 			if (_type == TYPE_VectorArray)
 			{
-				VectorArrayAccessor<T> v(_r, _pos);
-				if (v.GetElementCount() == elemCount)
-					return v;
+				u32 pos = _pos;
+				u8 st, ec;
+				_r->ParseVectorAccessorPrefix(pos, st, ec);
+				if (st == SubtypeInfo<T>::Subtype && ec == expectedElemCount)
+					return { _r, pos, st, ec };
 			}
 			return {};
 		}

@@ -19,14 +19,12 @@
 
 #ifdef _MSC_VER
 #  define DATO_FORCEINLINE __forceinline
-#  define DATO_BREAKPOINT __debugbreak()
+extern "C" void __ud2(void);
+#  pragma intrinsic(__ud2)
+#  define DATO_CRASH _dato_error()
 #else
 #  define DATO_FORCEINLINE inline __attribute__((always_inline))
-#  ifdef __clang__
-#    define DATO_BREAKPOINT __builtin_debugtrap()
-#  else
-#    define DATO_BREAKPOINT __builtin_trap() // TODO
-#  endif
+#  define DATO_CRASH __builtin_trap()
 #endif
 
 // validation - triggers a code breakpoint when hitting the failure condition
@@ -41,7 +39,7 @@
 #endif
 
 #if DATO_VALIDATE_INPUTS
-#  define DATO_INPUT_EXPECT(x) if (!(x)) DATO_BREAKPOINT
+#  define DATO_INPUT_EXPECT(x) if (!(x)) DATO_CRASH
 #else
 #  define DATO_INPUT_EXPECT(x)
 #endif
@@ -51,6 +49,10 @@ namespace dato {
 
 #ifndef DATO_COMMON_DEFS
 #define DATO_COMMON_DEFS
+
+#ifdef _MSC_VER
+[[noreturn]] __forceinline void _dato_error() { __ud2(); }
+#endif
 
 typedef signed char s8;
 typedef unsigned char u8;
@@ -544,7 +546,7 @@ struct MemReuseHashTable
 			if (pos == ipos)
 			{
 				// unexpectedly failed to insert
-				DATO_BREAKPOINT;
+				DATO_CRASH;
 				return;
 			}
 		}

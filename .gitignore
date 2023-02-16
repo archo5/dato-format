@@ -5,3 +5,5 @@
 *.pdb
 *.exe
 *.gen.*
+*.ll
+*.s
