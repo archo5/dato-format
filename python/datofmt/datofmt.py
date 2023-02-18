@@ -15,24 +15,27 @@ TYPE_U64 = 6
 TYPE_F64 = 7
 # - generic containers
 TYPE_Array = 8
-TYPE_Object = 9
+TYPE_StringMap = 9
+TYPE_IntMap = 10
 # - raw arrays (identified by purpose)
 # (strings contain an extra 0-termination value not included in their size)
-TYPE_String8 = 10 # ASCII/UTF-8 or other single-byte encoding
-TYPE_String16 = 11 # likely to be UTF-16
-TYPE_String32 = 12 # likely to be UTF-32
-TYPE_ByteArray = 13
-# - typed arrays (identified by type)
-TYPE_TypedArrayS8 = 14
-TYPE_TypedArrayU8 = 15
-TYPE_TypedArrayS16 = 16
-TYPE_TypedArrayU16 = 17
-TYPE_TypedArrayS32 = 18
-TYPE_TypedArrayU32 = 19
-TYPE_TypedArrayS64 = 20
-TYPE_TypedArrayU64 = 21
-TYPE_TypedArrayF32 = 22
-TYPE_TypedArrayF64 = 23
+TYPE_String8 = 11 # ASCII/UTF-8 or other single-byte encoding
+TYPE_String16 = 12 # likely to be UTF-16
+TYPE_String32 = 13 # likely to be UTF-32
+TYPE_ByteArray = 14
+TYPE_Vector = 15
+TYPE_VectorArray = 16
+
+SUBTYPE_S8 = 0
+SUBTYPE_U8 = 1
+SUBTYPE_S16 = 2
+SUBTYPE_U16 = 3
+SUBTYPE_S32 = 4
+SUBTYPE_U32 = 5
+SUBTYPE_S64 = 6
+SUBTYPE_U64 = 7
+SUBTYPE_F32 = 8
+SUBTYPE_F64 = 9
 
 
 PACK_S8 = struct.Struct("<b")
@@ -48,17 +51,12 @@ PACK_F64 = struct.Struct("<d")
 
 
 FLAG_Aligned = 1 << 0
-FLAG_IntegerKeys = 1 << 1
-FLAG_SortedKeys = 1 << 2
-FLAG_BigEndian = 1 << 3
-FLAG_RelativeObjectRefs = 1 << 4
+FLAG_SortedKeys = 1 << 1
 
-def generate_flags(aligned, integer_keys, sorted_keys, relative_object_refs):
+def generate_flags(aligned, sorted_keys):
 	val = 0
 	if aligned: val |= FLAG_Aligned
-	if integer_keys: val |= FLAG_IntegerKeys
 	if sorted_keys: val |= FLAG_SortedKeys
-	if relative_object_refs: val |= FLAG_RelativeObjectRefs
 	return val
 
 
@@ -163,47 +161,29 @@ class EncodingU8X32:
 			return int.from_bytes(data[pos:pos+4], "little"), pos + 4
 
 
-"""Optimizes for reading speed at the cost of size while remaining compatible with all data"""
+"""Optimizes for reading speed at the cost of size"""
 class Config0:
 	identifier = 0
 	key_length_encoding = EncodingU32
-	object_size_encoding = EncodingU32
+	map_size_encoding = EncodingU32
 	array_length_encoding = EncodingU32
 	value_length_encoding = EncodingU32
 
 
-"""Optimizes slightly towards size for a minor reading speed cost while remaining compatible with all data"""
+"""Optimizes slightly towards size for a minor reading speed cost"""
 class Config1:
 	identifier = 1
 	key_length_encoding = EncodingU32
-	object_size_encoding = EncodingU32
+	map_size_encoding = EncodingU32
 	array_length_encoding = EncodingU32
 	value_length_encoding = EncodingU8X32
 
 
-"""Optimizes for size at the cost of reading speed while remaining compatible with all data"""
+"""Optimizes for size at the cost of reading speed"""
 class Config2:
 	identifier = 2
-	key_length_encoding = EncodingU8X32
-	object_size_encoding = EncodingU8X32
-	array_length_encoding = EncodingU8X32
-	value_length_encoding = EncodingU8X32
-
-
-"""Optimizes for reading speed first, then size, while breaking compatibility with large objects and keys"""
-class Config3:
-	identifier = 3
-	key_length_encoding = EncodingU8
-	object_size_encoding = EncodingU8
-	array_length_encoding = EncodingU32
-	value_length_encoding = EncodingU32
-
-
-"""Optimizes for size first, then reading speed, while breaking compatibility with large objects and keys"""
-class Config4:
-	identifier = 4
-	key_length_encoding = EncodingU8
-	object_size_encoding = EncodingU8
+	key_length_encoding = EncodingU32
+	map_size_encoding = EncodingU8X32
 	array_length_encoding = EncodingU8X32
 	value_length_encoding = EncodingU8X32
 
@@ -224,9 +204,9 @@ class Entry:
 
 
 class StagingObject:
-	def __init__(self, has_keys):
+	def __init__(self, vtype):
 		self.entries = []
-		self.has_keys = has_keys
+		self.vtype = vtype
 
 
 class Builder:
@@ -237,28 +217,26 @@ class Builder:
 		config=Config0,
 		aligned=True,
 		skip_duplicate_keys=True,
-		integer_keys=False,
-		sort_keys=False,
-		relative_object_refs=False
+		sort_keys=True
 	):
 		# settings
-		if config.identifier >= 5 and config.identifier <= 127:
-			raise EncodingException("reserved identifier (5-127) used: %d", config.identifier)
+		if config.identifier >= 3 and config.identifier <= 127:
+			raise EncodingException("reserved identifier (3-127) used: %d", config.identifier)
 		self._append_key_length = config.key_length_encoding.write
-		self._append_object_size = config.object_size_encoding.write
+		self._append_map_size = config.map_size_encoding.write
 		self._append_array_length = config.array_length_encoding.write
 		self._append_value_length = config.value_length_encoding.write
 		self.aligned = aligned
 		self.skip_duplicate_keys = skip_duplicate_keys
-		self.integer_keys = integer_keys
 		self.sort_keys = sort_keys
-		self.relative_object_refs = relative_object_refs
 		# state
 		self.data = bytearray(prefix)
 		self.written_keys = {}
 		# header
 		self.data.append(config.identifier)
-		self.data.append(generate_flags(aligned, integer_keys, sort_keys, relative_object_refs))
+		self.data.append(generate_flags(aligned, sort_keys))
+		self.root_type_off = len(self.data)
+		self.data.append(0)
 		# - reserve space for the root pointer
 		if aligned:
 			pos = roundup(len(self.data), 4)
@@ -287,7 +265,7 @@ class Builder:
 	def get_encoded(self):
 		return self.data
 
-	def append_key(self, key):
+	def append_string_key(self, key):
 		"""returns the position of the key"""
 		key = key.encode("utf-8")
 
@@ -386,8 +364,8 @@ class Builder:
 	def append_typed_array_float64(self, val):
 		self._append_typed_array(val, TYPE_TypedArrayF64, PACK_F64, 8)
 
-	def append_object(self, entries):
-		pos = self._append_object_size(self, len(entries), 4 if self.aligned else None)
+	def _append_map(self, entries):
+		pos = self._append_map_size(self, len(entries), 4 if self.aligned else None)
 		for e in entries:
 			self.data.extend(e.key.to_bytes(4, "little"))
 		for e in entries:
@@ -395,10 +373,14 @@ class Builder:
 		for e in entries:
 			self.data.append(e.vtype)
 		return pos
+	def append_string_map(self, entries):
+		return Value(TYPE_StringMap, self._append_map(entries))
+	def append_int_map(self, entries):
+		return Value(TYPE_IntMap, self._append_map(entries))
 
-	def append_object_from_dict(self, objdict):
-		entries = [v.with_key(self.append_key(k)) for k, v in objdict.items()]
-		return self.append_object(entries)
+	def append_string_map_from_dict(self, objdict):
+		entries = [v.with_key(self.append_string_key(k)) for k, v in objdict.items()]
+		return self.append_string_map(entries)
 
 	def append_array(self, elements):
 		pos = self._append_array_length(self, len(elements), 4 if self.aligned else None)
@@ -417,29 +399,27 @@ class LinearWriter:
 		config=Config0,
 		aligned=True,
 		skip_duplicate_keys=True,
-		integer_keys=False,
-		sort_keys=False,
-		relative_object_refs=False
+		sort_keys=True,
 	):
 		# settings
-		if config.identifier >= 5 and config.identifier <= 127:
-			raise EncodingException("reserved identifier (5-127) used: %d", config.identifier)
+		if config.identifier >= 3 and config.identifier <= 127:
+			raise EncodingException("reserved identifier (3-127) used: %d", config.identifier)
 		self._append_key_length = config.key_length_encoding.write
-		self._append_object_size = config.object_size_encoding.write
+		self._append_map_size = config.map_size_encoding.write
 		self._append_array_length = config.array_length_encoding.write
 		self._append_value_length = config.value_length_encoding.write
 		self.aligned = aligned
 		self.skip_duplicate_keys = skip_duplicate_keys
-		self.integer_keys = integer_keys
 		self.sort_keys = sort_keys
-		self.relative_object_refs = relative_object_refs
 		# state
 		self.data = bytearray(prefix)
-		self.stack = [StagingObject(True)]
+		self.stack = [StagingObject(TYPE_StringMap)]
 		self.written_keys = {}
 		# header
 		self.data.append(config.identifier)
-		self.data.append(generate_flags(aligned, integer_keys, sort_keys, relative_object_refs))
+		self.data.append(generate_flags(aligned, sort_keys))
+		self.root_type_off = len(self.data)
+		self.data.append(0)
 		# - reserve space for the root pointer
 		if self.aligned:
 			pos = roundup(len(self.data), 4)
@@ -475,7 +455,7 @@ class LinearWriter:
 
 	def _write_elem(self, key, vtype, val):
 		S = self.stack[-1]
-		S.entries.append(Entry(vtype, self._append_key(key) if S.has_keys else 0, val))
+		S.entries.append(Entry(vtype, self._append_key(key) if S.vtype != TYPE_Array else 0, val))
 
 	def write_null(self, key):
 		self._write_elem(key, TYPE_Null, 0)
@@ -561,16 +541,23 @@ class LinearWriter:
 	def write_typed_array_float64(self, key, val):
 		self._write_typed_array(key, val, TYPE_TypedArrayF64, PACK_F64, 8)
 
-	def begin_object(self, key):
-		self._write_elem(key, TYPE_Object, 0)
-		self.stack.append(StagingObject(True))
-	def end_object(self):
+	def begin_string_map(self, key):
+		self._write_elem(key, TYPE_StringMap, 0)
+		self.stack.append(StagingObject(TYPE_StringMap))
+	def end_string_map(self):
+		pos = self._write_and_remove_top_object()
+		self.stack[-1].entries[-1].val = pos
+
+	def begin_int_map(self, key):
+		self._write_elem(key, TYPE_IntMap, 0)
+		self.stack.append(StagingObject(TYPE_IntMap))
+	def end_int_map(self):
 		pos = self._write_and_remove_top_object()
 		self.stack[-1].entries[-1].val = pos
 
 	def begin_array(self, key):
 		self._write_elem(key, TYPE_Array, 0)
-		self.stack.append(StagingObject(False))
+		self.stack.append(StagingObject(TYPE_Array))
 	def end_array(self):
 		S = self.stack[-1]
 		num = len(S.entries)
@@ -589,7 +576,7 @@ class LinearWriter:
 		S = self.stack[-1]
 		num = len(S.entries)
 
-		pos = self._append_object_size(self, num, 4 if self.aligned else None)
+		pos = self._append_map_size(self, num, 4 if self.aligned else None)
 		for e in S.entries:
 			self.data.extend(e.key.to_bytes(4, "little"))
 		for e in S.entries:
@@ -607,8 +594,11 @@ class LinearWriter:
 
 	def get_encoded(self):
 		while len(self.stack) > 1:
-			if self.stack[-1].has_keys:
-				self.end_object()
+			vtype = self.stack[-1].vtype
+			if vtype == TYPE_StringMap:
+				self.end_string_map()
+			elif vtype == TYPE_IntMap:
+				self.end_int_map()
 			else:
 				self.end_array()
 		if len(self.stack) == 1:
@@ -653,15 +643,22 @@ class LinearWriter:
 				self.write_variable(None, e)
 			self.end_array()
 		if isinstance(val, dict):
-			self.begin_object(key)
+			has_int_keys = isinstance(next(iter(val)), int)
+			if has_int_keys:
+				self.begin_int_map(key)
+			else:
+				self.begin_string_map(key)
 			for k, v in val.items():
 				self.write_variable(k, v)
-			self.end_object()
+			if has_int_keys:
+				self.end_int_map()
+			else:
+				self.end_string_map()
 		if hasattr(val, "__dict__"):
-			self.begin_object(key)
+			self.begin_string_map(key)
 			for k, v in vars(val).items():
 				self.write_variable(k, v)
-			self.end_object()
+			self.end_string_map()
 
 
 def encode(data, **kwargs):
@@ -703,12 +700,11 @@ class ArrayAccessor(Accessor):
 		return [acc.read() for acc in self.R._get_array_entries_direct(self.datapos, self.size)]
 
 
-class ObjectAccessor(Accessor):
+class MapAccessor(Accessor):
 	def __init__(self, R, pos):
-		self._type = TYPE_Object
 		self.R = R
 		self.pos = pos
-		self.size, self.datapos = R._get_object_size_and_data_pos(pos)
+		self.size, self.datapos = R._get_map_size_and_data_pos(pos)
 	def __len__(self):
 		return self.size
 	def __getitem__(self, key):
@@ -716,11 +712,21 @@ class ObjectAccessor(Accessor):
 			key = key.encode("utf-8")
 		return self.R._find_value_in_object_fast(self.datapos, self.size, key)
 	def __iter__(self):
-		return self.R._get_object_entries_direct(self.datapos, self.size)
+		return self.R._get_map_entries_direct(self.datapos, self.size)
 	def shallow_read(self):
-		return { key: acc for key, acc in self.R._get_object_entries_direct(self.datapos, self.size) }
+		return { key: acc for key, acc in self.R._get_map_entries_direct(self.datapos, self.size) }
 	def read(self):
-		return { key: acc.read() for key, acc in self.R._get_object_entries_direct(self.datapos, self.size) }
+		return { key: acc.read() for key, acc in self.R._get_map_entries_direct(self.datapos, self.size) }
+
+class StringMapAccessor(MapAccessor):
+	def __init__(self, R, pos):
+		super().__init__(R, pos)
+		self._type = TYPE_StringMap
+
+class IntMapAccessor(MapAccessor):
+	def __init__(self, R, pos):
+		super().__init__(R, pos)
+		self._type = TYPE_IntMap
 
 
 class ValueArrayAccessor(Accessor):
@@ -800,7 +806,8 @@ ACCESSORS[TYPE_U64] = lambda R, pos: SingleValueAccessor(TYPE_U64, lambda: R._re
 ACCESSORS[TYPE_F64] = lambda R, pos: SingleValueAccessor(TYPE_F64, lambda: R._read_f64(pos))
 
 ACCESSORS[TYPE_Array] = ArrayAccessor
-ACCESSORS[TYPE_Object] = ObjectAccessor
+ACCESSORS[TYPE_StringMap] = StringMapAccessor
+ACCESSORS[TYPE_IntMap] = IntMapAccessor
 
 ACCESSORS[TYPE_String8] = lambda R, pos: StringAccessor(R, pos, TYPE_String8, 1, (PACK_U8, "utf-8"))
 ACCESSORS[TYPE_String16] = lambda R, pos: StringAccessor(R, pos, TYPE_String16, 2, (PACK_U16, "utf-16"))
@@ -843,7 +850,7 @@ class BufferReader:
 		if self.root + 4 > len(data):
 			raise AccessException("root position out of bounds")
 		self._parse_key_length = config.key_length_encoding.parse
-		self._parse_object_size = config.object_size_encoding.parse
+		self._parse_map_size = config.map_size_encoding.parse
 		self._parse_array_length = config.array_length_encoding.parse
 		self._parse_value_length = config.value_length_encoding.parse
 
@@ -856,8 +863,8 @@ class BufferReader:
 	def _get_value_array_size_and_data_pos(self, pos):
 		return self._parse_value_length(self.data, pos)
 
-	def _get_object_size_and_data_pos(self, pos):
-		return self._parse_object_size(self.data, pos)
+	def _get_map_size_and_data_pos(self, pos):
+		return self._parse_map_size(self.data, pos)
 
 	def _find_value_in_object_fast(self, objbasepos, objsize, key_to_find):
 		if self.flags & FLAG_SortedKeys:
@@ -892,7 +899,7 @@ class BufferReader:
 					)
 			return None
 
-	def _get_object_entries_direct(self, objbasepos, objsize, decode_keys=True):
+	def _get_map_entries_direct(self, objbasepos, objsize, decode_keys=True):
 		kpos = objbasepos
 		vpos = objbasepos + objsize * 4
 		tpos = objbasepos + objsize * 8
@@ -965,7 +972,7 @@ class Validator:
 		self.prefix = prefix
 		self.identifier = config.identifier
 		self._parse_key_length = config.key_length_encoding.parse
-		self._parse_object_size = config.object_size_encoding.parse
+		self._parse_map_size = config.map_size_encoding.parse
 		self._parse_array_length = config.array_length_encoding.parse
 		self._parse_value_length = config.value_length_encoding.parse
 
@@ -973,7 +980,7 @@ class Validator:
 		if not data.startswith(self.prefix):
 			return False, ErrorMissingPrefix
 		pos = len(self.prefix)
-		if pos + 2 > len(data):
+		if pos + 3 > len(data):
 			return False, ErrorEOF
 		identifier = data[pos]
 		if identifier != self.identifier:
@@ -981,16 +988,18 @@ class Validator:
 		pos += 1
 		flags = data[pos]
 		pos += 1
+		root_type = data[pos]
+		pos += 1
 		if flags & FLAG_Aligned:
 			pos = roundup(pos, 4)
 		if pos + 4 > len(data):
 			return False, ErrorEOF
 		pos = int.from_bytes(data[pos : pos + 4], "little")
-		return self._validate_object(flags, data, pos)
+		return self._validate_value(flags, data, root_type, pos)
 
-	def _validate_object(self, flags, data, pos):
+	def _validate_map(self, flags, data, pos, has_int_keys):
 		# object size value
-		size, pos = self._parse_object_size(data, pos)
+		size, pos = self._parse_map_size(data, pos)
 		if size is None:
 			return False, ErrorEOF
 		# object data range
@@ -1001,7 +1010,7 @@ class Validator:
 		if size == 0:
 			return True, None
 		# validate keys
-		if flags & FLAG_IntegerKeys:
+		if has_int_keys:
 			if flags & FLAG_SortedKeys:
 				prev = -1
 				for i in range(size):
@@ -1062,7 +1071,8 @@ class Validator:
 			# the value cannot be validated
 			return True, None
 		if vtype == TYPE_Array: return self._validate_array(flags, data, pos)
-		if vtype == TYPE_Object: return self._validate_object(flags, data, pos)
+		if vtype == TYPE_StringMap: return self._validate_map(flags, data, pos, False)
+		if vtype == TYPE_IntMap: return self._validate_map(flags, data, pos, True)
 		if vtype == TYPE_String8: return self._validate_typed_array(flags, data, pos, 1, True)
 		if vtype == TYPE_String16: return self._validate_typed_array(flags, data, pos, 2, True)
 		if vtype == TYPE_String32: return self._validate_typed_array(flags, data, pos, 4, True)
