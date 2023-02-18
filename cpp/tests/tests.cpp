@@ -569,12 +569,12 @@ struct ExpectationBuilder
 
 #define WRTEST(build, expected) \
 { \
-	dato::Writer<dato::WriterConfig0> wr; \
+	dato::Writer wr; \
 	build; \
 	expected; \
-	CHECK_TRUE(dato::UniversalReader().Init(eb.bfr, eb.len)); \
+	CHECK_TRUE(dato::Reader().Init(eb.bfr, eb.len)); \
 	CHECK_BUF_EQ(eb.bfr, eb.len, wr.GetData(), wr.GetSize()); \
-	dato::UniversalReader ubr; \
+	dato::Reader ubr; \
 	CHECK_TRUE(ubr.Init(wr.GetData(), wr.GetSize())); \
 	auto root = ubr.GetRoot(); \
 	dato::FILEValueDumperIterator it(stdout); \

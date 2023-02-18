@@ -365,7 +365,9 @@ private:
 	// compares the bytes until the first 0-char
 	bool KeyEquals(u32 kpos, const char* str) const
 	{
-		_cfg.ReadKeyLength(_data, _len, kpos);
+		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
+		(void)len;
+		DATO_BUFFER_EXPECT(kpos + len + 1 <= _len);
 		//return strcmp(str, &_data[kpos]) == 0;
 		const char* kp = &_data[kpos];
 		size_t i = 0;
@@ -382,7 +384,9 @@ private:
 	}
 	int KeyCompare(u32 kpos, const char* str) const
 	{
-		_cfg.ReadKeyLength(_data, _len, kpos);
+		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
+		(void)len;
+		DATO_BUFFER_EXPECT(kpos + len + 1 <= _len);
 		//return strcmp(str, &_data[kpos]);
 		const char* kp = &_data[kpos];
 		size_t i = 0;
@@ -404,11 +408,13 @@ private:
 		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
 		if (len != lenMem)
 			return false;
+		DATO_BUFFER_EXPECT(kpos + len + 1 <= _len);
 		return DATO_MEMCMP(mem, &_data[kpos], len) == 0;
 	}
 	int KeyCompare(u32 kpos, const void* mem, size_t lenMem) const
 	{
 		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
+		DATO_BUFFER_EXPECT(kpos + len + 1 <= _len);
 		u32 testLen = u32(len < lenMem ? len : lenMem);
 		if (int bc = DATO_MEMCMP(mem, &_data[kpos], testLen))
 			return bc;

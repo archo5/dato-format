@@ -20,7 +20,7 @@ This format combines the following properties:
 - **Customizable** - the exact details of the format can be optimized for the particular application:
 	- It is possible to add more data types
 	- The encoding of various length/size values can be changed to optimize for size or performance
-	- Map keys can be either names (for readability) or 32-bit integers (for reduced size and parsing speed)
+	- Map keys can be either names (for readability) or 32-bit integers (for reduced size and faster lookups)
 		- Integer keys can be hashes, enum values, indices or FOURCC codes
 	- Different string types can be used (to match the application's internal string format)
 	- The prefix of the file can be changed
@@ -48,11 +48,9 @@ Apart from the obvious (e.g. downsides of a binary format) don't use it if:
 - your data has more structures than numbers
 	- While this format can easily store lots of numbers fairly efficiently, it will not be as efficient if there are lots of generic arrays and maps instead.
 
-Some tradeoffs however may be explored in the future (including finding ways to make the format more friendly to compression, possibly at the cost of a short pre-pass).
-
 ## Which configuration of the format should I use?
 
-These configurations tend not to significantly affect the reading speed or the compressed size of the files so unless something specific is being done, it probably won't matter.
+These configurations tend not to significantly affect the reading speed or the compressed size of the files so unless something specific is being done (heavy use of specific types), it probably won't matter.
 
 Therefore, configuration 0 with alignment and key sorting is the usual suggestion as well as the default one - it favors performance and compatibility without limiting usability and inspectability.
 
@@ -99,7 +97,7 @@ PREFIX-BYTES = "DATO" | [user-defined]
 SIZE-ENC-CONFIG-BYTE = [0;2] | [128;255]
 # values:
 # - 0-2 refer to standardized size encoding configurations
-# - 5-127 are reserved
+# - 3-127 are reserved
 # - 128-255 can be used for specifying application-specific configurations
 
 PROPERTY-BYTE = [0 1 R R R R R R]
@@ -146,7 +144,7 @@ ARRAY =
 	types = TYPE[size]
 }
 
-TYPED-ARRAY(T, alignment=sizeof(T), null_terminated=False) =
+TYPED-ARRAY(T, alignment=sizeof(T), null_terminated) =
 # in this spec, T optionally specifies the array element type
 {
 	ALIGN(SIZE(TYPED-ARRAY), alignment) # for mixed-value sizes, the alignment must take into account all the values
@@ -156,14 +154,14 @@ TYPED-ARRAY(T, alignment=sizeof(T), null_terminated=False) =
 	if null_terminated: T(0)
 }
 # variations of typed array:
-BYTE-ARRAY(alignment) = TYPED-ARRAY(u8, alignment)
+BYTE-ARRAY(alignment) = TYPED-ARRAY(u8, alignment, null_terminated=False)
 STRING-8 = TYPED-ARRAY(char8, null_terminated=True)
 STRING-16 = TYPED-ARRAY(char16, null_terminated=True)
 STRING-32 = TYPED-ARRAY(char32, null_terminated=True)
 
 SIZE(T) = [depends on encoding]
 {
-	option 1: uint8(n)
+	option 1: uint8(n) # currently unused by any of the predefined configurations
 	option 2: uint16(n) # currently unused by any of the predefined configurations
 	option 3: uint32(n)
 	option 4:
