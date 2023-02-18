@@ -1,7 +1,7 @@
 
 #pragma once
 
-#if !defined(DATO_MEMCPY) || !defined(DATO_MEMCMP)
+#if !defined(DATO_MEMCPY) || !defined(DATO_MEMCMP) || !defined(DATO_STRCMP)
 #  include <string.h>
 #endif
 
@@ -152,6 +152,10 @@ inline u32 RoundUp(u32 x, u32 n)
 }
 
 #endif // DATO_COMMON_DEFS
+
+#ifndef DATO_STRCMP
+#  define DATO_STRCMP strcmp
+#endif
 
 
 #if DATO_FAST_UNSAFE
@@ -368,39 +372,14 @@ private:
 		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
 		(void)len;
 		DATO_BUFFER_EXPECT(kpos + len + 1 <= _len);
-		//return strcmp(str, &_data[kpos]) == 0;
-		const char* kp = &_data[kpos];
-		size_t i = 0;
-		for (;;)
-		{
-			u8 sc = str[i];
-			u8 kc = kp[i];
-			if (sc - kc)
-				return false;
-			if (sc == 0)
-				return true;
-			i++;
-		}
+		return DATO_STRCMP(str, &_data[kpos]) == 0;
 	}
 	int KeyCompare(u32 kpos, const char* str) const
 	{
 		u32 len = _cfg.ReadKeyLength(_data, _len, kpos);
 		(void)len;
 		DATO_BUFFER_EXPECT(kpos + len + 1 <= _len);
-		//return strcmp(str, &_data[kpos]);
-		const char* kp = &_data[kpos];
-		size_t i = 0;
-		for (;;)
-		{
-			u8 sc = str[i];
-			u8 kc = kp[i];
-			int diff = sc - kc;
-			if (diff)
-				return diff;
-			if (sc == 0)
-				return 0;
-			i++;
-		}
+		return DATO_STRCMP(str, &_data[kpos]);
 	}
 	// compares the size first, then all of bytes
 	bool KeyEquals(u32 kpos, const void* mem, size_t lenMem) const
