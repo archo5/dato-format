@@ -52,32 +52,26 @@ Some tradeoffs however may be explored in the future (including finding ways to 
 
 ## Which configuration of the format should I use?
 
-- Configuration 0 with alignment is the usual suggestion - it favors performance and compatibility without limiting usability and inspectability.
+These configurations tend not to significantly affect the reading speed or the compressed size of the files so unless something specific is being done, it probably won't matter.
+
+Therefore, configuration 0 with alignment and key sorting is the usual suggestion as well as the default one - it favors performance and compatibility without limiting usability and inspectability.
 
 Size encoding configurations:
 
-- in the order of most performant to smallest: 0, 1, 3, 4, 2
-- **0**: all sizes are 32-bit
+- in the order of most performant to smallest:
+- **0**: all sizes are 4 bytes long
 	- Optimizes for reading speed at the cost of size
-	- Compatible with all data
-- **1**: key, map and generic array sizes are 32-bit, typed array sizes are variable-length (8-40 bits)
+- **1**: key, map and generic array sizes are 4 bytes long, typed array sizes are variable-length (1-5 bytes)
 	- Shifts the optimization towards size at a minor cost to reading speed
-	- Compatible with all data
-- **2**: all sizes are variable-length (8-40 bits)
+- **2**: key sizes are 4 bytes long, all other sizes are variable-length (1-5 bytes)
 	- Optimizes for size at the cost of reading speed
-	- Compatible with all data
-- **3**: key and map sizes are 8-bit, array sizes are 32-bit
-	- Optimizes for reading speed first, then size
-	- Breaks compatibility with maps exceeding 255 properties and string keys longer than 255 bytes
-- **4**: key and map sizes are 8-bit, array sizes are variable-length (8-40 bits)
-	- Optimizes for size first, then reading speed
-	- Breaks compatibility with maps exceeding 255 properties and string keys longer than 255 bytes
-- Custom configurations can be created as well.
+- Custom configurations can be created as well, including ones that don't support certain sizes of data (for a minor speedup).
 
 Additional options:
 
 - Alignment can be disabled to reduce size at the cost of traversal speed (at least on some platforms).
-- Key sorting can be enabled to improve lookup speed at the cost of serialization speed.
+	- This doesn't seem to affect the compressibility of files however (compressed sizes will be roughly the same).
+- Key sorting can be disabled to improve serialization speed at the cost of lookup speed.
 
 ## The file format specification (**warning: not finalized at this point - minor details may change**)
 
@@ -102,9 +96,9 @@ FILE =
 
 PREFIX-BYTES = "DATO" | [user-defined]
 
-SIZE-ENC-CONFIG-BYTE = [0;4] | [128;255]
+SIZE-ENC-CONFIG-BYTE = [0;2] | [128;255]
 # values:
-# - 0-4 refer to standardized size encoding configurations
+# - 0-2 refer to standardized size encoding configurations
 # - 5-127 are reserved
 # - 128-255 can be used for specifying application-specific configurations
 
@@ -233,13 +227,13 @@ TYPE = uint8
 - 10: int map (value = VREF(MAP))
 # - raw arrays (identified by purpose)
 # (strings contain an extra 0-termination value not included in their size)
-- 10: string, 8-bit characters (value = VREF(STRING-8))
-- 11: string, 16-bit characters (value = VREF(STRING-16))
-- 12: string, 32-bit characters (value = VREF(STRING-32))
-- 13: byte array (value = VREF(BYTE-ARRAY))
-- 14: vector (value = VREF(VECTOR))
-- 15: vector array (value = VREF(VECTOR-ARRAY))
-- 16-127: reserved # likely to be used for standardizing frequently used common formats to remove the need to incur the length overhead of putting them into generic typed arrays
+- 11: string, 8-bit characters (value = VREF(STRING-8))
+- 12: string, 16-bit characters (value = VREF(STRING-16))
+- 13: string, 32-bit characters (value = VREF(STRING-32))
+- 14: byte array (value = VREF(BYTE-ARRAY))
+- 15: vector (value = VREF(VECTOR))
+- 16: vector array (value = VREF(VECTOR-ARRAY))
+- 17-127: reserved # likely to be used for standardizing frequently used common formats to remove the need to incur the length overhead of putting them into generic typed arrays
 - 128-255: application-specific
 
 SUBTYPE = uint8 # first 4 bits and 0-9 only, the remaining values are reserved
@@ -281,10 +275,6 @@ SUBTYPE = uint8 # first 4 bits and 0-9 only, the remaining values are reserved
 	- This effectively mostly just makes the parsing harder and does not guarantee the actual alignment (which can be validated manually).
 - **Replacing typed arrays with aligned arrays**:
 	- This would reduce the inspectability of data using this format and even when using a tool to dump the contents of a file, would require, for example, knowing the typical floating point number values/ranges in hex to see which arrays contain floating point values instead of fairly large integers.
-- **Picking one configuration for all users**:
-	- Having reviewed a number of custom-made formats, it was clear that different teams have different preferences and risk tolerances - for example:
-		- Some prefer to use string keys and others are consistently preferring hashes.
-		- Some are fine to set project-wide limitations in the name of performance while others like to keep their options open.
 - **Entry point at the end of the file** ([FlexBuffers](https://google.github.io/flatbuffers/flatbuffers_internals.html))
 	- The issue is that it's difficult to ensure that we have the entire file if we expect the end of the file (whatever it may be) to just make sense.
 - **Adaptive overall sizing of integer vectors defining generic maps/arrays** ([FlexBuffers](https://google.github.io/flatbuffers/flatbuffers_internals.html))

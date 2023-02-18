@@ -1,9 +1,9 @@
 #line 2 "buildtest-writer.cpp"
 using namespace dato;
 
-template <class Config> void TestWriter()
+void TestWriter()
 {
-	Writer<Config> wr;
+	Writer wr;
 	wr.SetRoot(wr.WriteNull());
 	wr.WriteBool(false);
 	wr.WriteBool(true);
@@ -20,33 +20,29 @@ template <class Config> void TestWriter()
 	wr.WriteString16(u"");
 	wr.WriteString32(U"");
 	wr.WriteByteArray(nullptr, 0);
-	wr.template WriteVectorT<s8>(nullptr, 3);
-	wr.template WriteVectorT<u8>(nullptr, 3);
-	wr.template WriteVectorT<s16>(nullptr, 3);
-	wr.template WriteVectorT<u16>(nullptr, 3);
-	wr.template WriteVectorT<s32>(nullptr, 3);
-	wr.template WriteVectorT<u32>(nullptr, 3);
-	wr.template WriteVectorT<s64>(nullptr, 3);
-	wr.template WriteVectorT<u64>(nullptr, 3);
-	wr.template WriteVectorT<f32>(nullptr, 3);
-	wr.template WriteVectorT<f64>(nullptr, 3);
-	wr.template WriteVectorArrayT<s8>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<u8>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<s16>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<u16>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<s32>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<u32>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<s64>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<u64>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<f32>(nullptr, 3, 0);
-	wr.template WriteVectorArrayT<f64>(nullptr, 3, 0);
+	wr.WriteVectorT<s8>(nullptr, 3);
+	wr.WriteVectorT<u8>(nullptr, 3);
+	wr.WriteVectorT<s16>(nullptr, 3);
+	wr.WriteVectorT<u16>(nullptr, 3);
+	wr.WriteVectorT<s32>(nullptr, 3);
+	wr.WriteVectorT<u32>(nullptr, 3);
+	wr.WriteVectorT<s64>(nullptr, 3);
+	wr.WriteVectorT<u64>(nullptr, 3);
+	wr.WriteVectorT<f32>(nullptr, 3);
+	wr.WriteVectorT<f64>(nullptr, 3);
+	wr.WriteVectorArrayT<s8>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<u8>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<s16>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<u16>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<s32>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<u32>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<s64>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<u64>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<f32>(nullptr, 3, 0);
+	wr.WriteVectorArrayT<f64>(nullptr, 3, 0);
 }
 
 int main()
 {
-	TestWriter<WriterConfig0>();
-	TestWriter<WriterConfig1>();
-	TestWriter<WriterConfig2>();
-	TestWriter<WriterConfig3>();
-	TestWriter<WriterConfig4>();
+	TestWriter();
 }

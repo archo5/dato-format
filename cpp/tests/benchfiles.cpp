@@ -13,18 +13,10 @@
 using namespace dato;
 
 
-#ifndef CONFIG
-#define CONFIG 0
-#endif
-
-#define _DATO_CONCAT(a, b) a ## b
-#define DATO_CONCAT(a, b) _DATO_CONCAT(a, b)
 #define _DATO_STRINGIFY(a) #a
 #define DATO_STRINGIFY(a) _DATO_STRINGIFY(a)
-#define DATO_CONFIG DATO_CONCAT(WriterConfig, CONFIG)
-using WRTR = Writer<DATO_CONFIG>;
-using RDR = Reader<DATO_CONCAT(ReaderConfig, CONFIG)>;
-//using RDR = Reader<ReaderAdaptiveConfig>;
+using WRTR = Writer;
+using RDR = Reader;
 
 
 static bool streq(const char* a, const char* b)
@@ -129,7 +121,7 @@ static void gen_nodes(int argc, char* argv[])
 
 	WRTR W;
 	{
-		Benchmark B("gen-nodes");//, 100000, 10);
+		Benchmark B("gen-nodes");//, 100000, 2);
 		while (B.Iterate())
 		{
 			LCG lcg;
@@ -152,15 +144,18 @@ static void gen_nodes(int argc, char* argv[])
 				auto vscale = W.WriteVectorT(scale, 3);
 				auto kparent = W.WriteStringKey("parent");
 				auto vparent = W.WriteS32(-1);
+				auto kname = W.WriteStringKey("name");
+				auto vname = W.WriteString8("object");
 
-				StringMapEntry entries[4] =
+				StringMapEntry entries[5] =
 				{
 					{ kpos, vpos },
 					{ krot, vrot },
 					{ kscale, vscale },
 					{ kparent, vparent },
+					{ kname, vname },
 				};
-				auto node = W.WriteStringMap(entries, 4);
+				auto node = W.WriteStringMap(entries, 5);
 				vrnodes.push_back(node);
 			}
 			auto vnodes = W.WriteArray(vrnodes.data(), vrnodes.size());
@@ -169,7 +164,7 @@ static void gen_nodes(int argc, char* argv[])
 	}
 	printf("size=%u\n", unsigned(W.GetSize()));
 	{
-		Benchmark B("iter-nodes");//, 100000, 10);
+		Benchmark B("iter-nodes");//, 100000, 2);
 		while (B.Iterate())
 		{
 			RDR rdr;
@@ -179,7 +174,7 @@ static void gen_nodes(int argc, char* argv[])
 		}
 	}
 	{
-		Benchmark B("read-nodes");//, 100000, 10);
+		Benchmark B("read-nodes");//, 100000, 2);
 		while (B.Iterate())
 		{
 			RDR rdr;
@@ -220,10 +215,18 @@ static void gen_nodes(int argc, char* argv[])
 							}
 							if (auto vparent = obj.FindValueByKey("parent"))
 							{
-								if (vparent.IsNumber())
+								if (vparent.IsInteger())
 								{
 									auto v = vparent.CastToNumber<s32>();
 									DoNotOpt(v);
+								}
+							}
+							if (auto vname = obj.FindValueByKey("name"))
+							{
+								if (auto v = vname.TryGetString8())
+								{
+									for (auto c : v)
+										DoNotOpt(c);
 								}
 							}
 						}

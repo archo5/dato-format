@@ -34,9 +34,9 @@ template <class T> void VectorArrayUser(const T& ca)
 	a.CopyTo_SkipChecks(nullptr, 0);
 }
 
-template <class Config> void TestReader()
+void TestReader()
 {
-	Reader<Config> r;
+	Reader r;
 	r.Init(nullptr, 0);
 	auto dyn = r.GetRoot();
 #ifdef CANDUMP
@@ -52,27 +52,27 @@ template <class Config> void TestReader()
 		dyn.GetSubtype();
 		dyn.GetElementCount();
 		dyn.IsVector(0, 0);
-		dyn.template IsVectorT<s8>(0);
-		dyn.template IsVectorT<u8>(0);
-		dyn.template IsVectorT<s16>(0);
-		dyn.template IsVectorT<u16>(0);
-		dyn.template IsVectorT<s32>(0);
-		dyn.template IsVectorT<u32>(0);
-		dyn.template IsVectorT<s64>(0);
-		dyn.template IsVectorT<u64>(0);
-		dyn.template IsVectorT<f32>(0);
-		dyn.template IsVectorT<f64>(0);
+		dyn.IsVectorT<s8>(0);
+		dyn.IsVectorT<u8>(0);
+		dyn.IsVectorT<s16>(0);
+		dyn.IsVectorT<u16>(0);
+		dyn.IsVectorT<s32>(0);
+		dyn.IsVectorT<u32>(0);
+		dyn.IsVectorT<s64>(0);
+		dyn.IsVectorT<u64>(0);
+		dyn.IsVectorT<f32>(0);
+		dyn.IsVectorT<f64>(0);
 		dyn.IsVectorArray(0, 0);
-		dyn.template IsVectorArrayT<s8>(0);
-		dyn.template IsVectorArrayT<u8>(0);
-		dyn.template IsVectorArrayT<s16>(0);
-		dyn.template IsVectorArrayT<u16>(0);
-		dyn.template IsVectorArrayT<s32>(0);
-		dyn.template IsVectorArrayT<u32>(0);
-		dyn.template IsVectorArrayT<s64>(0);
-		dyn.template IsVectorArrayT<u64>(0);
-		dyn.template IsVectorArrayT<f32>(0);
-		dyn.template IsVectorArrayT<f64>(0);
+		dyn.IsVectorArrayT<s8>(0);
+		dyn.IsVectorArrayT<u8>(0);
+		dyn.IsVectorArrayT<s16>(0);
+		dyn.IsVectorArrayT<u16>(0);
+		dyn.IsVectorArrayT<s32>(0);
+		dyn.IsVectorArrayT<u32>(0);
+		dyn.IsVectorArrayT<s64>(0);
+		dyn.IsVectorArrayT<u64>(0);
+		dyn.IsVectorArrayT<f32>(0);
+		dyn.IsVectorArrayT<f64>(0);
 	}
 	{
 		dyn.AsBool();
@@ -125,52 +125,52 @@ template <class Config> void TestReader()
 		TypedArrayUser(dyn.AsByteArray());
 	}
 	{
-		VectorUser(dyn.template AsVector<s8>());
-		VectorUser(dyn.template AsVector<u8>());
-		VectorUser(dyn.template AsVector<s16>());
-		VectorUser(dyn.template AsVector<u16>());
-		VectorUser(dyn.template AsVector<s32>());
-		VectorUser(dyn.template AsVector<u32>());
-		VectorUser(dyn.template AsVector<s64>());
-		VectorUser(dyn.template AsVector<u64>());
-		VectorUser(dyn.template AsVector<f32>());
-		VectorUser(dyn.template AsVector<f64>());
+		VectorUser(dyn.AsVector<s8>());
+		VectorUser(dyn.AsVector<u8>());
+		VectorUser(dyn.AsVector<s16>());
+		VectorUser(dyn.AsVector<u16>());
+		VectorUser(dyn.AsVector<s32>());
+		VectorUser(dyn.AsVector<u32>());
+		VectorUser(dyn.AsVector<s64>());
+		VectorUser(dyn.AsVector<u64>());
+		VectorUser(dyn.AsVector<f32>());
+		VectorUser(dyn.AsVector<f64>());
 	}
 	{
-		VectorUser(dyn.template AsVector<s8>(1));
-		VectorUser(dyn.template AsVector<u8>(1));
-		VectorUser(dyn.template AsVector<s16>(1));
-		VectorUser(dyn.template AsVector<u16>(1));
-		VectorUser(dyn.template AsVector<s32>(1));
-		VectorUser(dyn.template AsVector<u32>(1));
-		VectorUser(dyn.template AsVector<s64>(1));
-		VectorUser(dyn.template AsVector<u64>(1));
-		VectorUser(dyn.template AsVector<f32>(1));
-		VectorUser(dyn.template AsVector<f64>(1));
+		VectorUser(dyn.AsVector<s8>(1));
+		VectorUser(dyn.AsVector<u8>(1));
+		VectorUser(dyn.AsVector<s16>(1));
+		VectorUser(dyn.AsVector<u16>(1));
+		VectorUser(dyn.AsVector<s32>(1));
+		VectorUser(dyn.AsVector<u32>(1));
+		VectorUser(dyn.AsVector<s64>(1));
+		VectorUser(dyn.AsVector<u64>(1));
+		VectorUser(dyn.AsVector<f32>(1));
+		VectorUser(dyn.AsVector<f64>(1));
 	}
 	{
-		VectorArrayUser(dyn.template AsVectorArray<s8>());
-		VectorArrayUser(dyn.template AsVectorArray<u8>());
-		VectorArrayUser(dyn.template AsVectorArray<s16>());
-		VectorArrayUser(dyn.template AsVectorArray<u16>());
-		VectorArrayUser(dyn.template AsVectorArray<s32>());
-		VectorArrayUser(dyn.template AsVectorArray<u32>());
-		VectorArrayUser(dyn.template AsVectorArray<s64>());
-		VectorArrayUser(dyn.template AsVectorArray<u64>());
-		VectorArrayUser(dyn.template AsVectorArray<f32>());
-		VectorArrayUser(dyn.template AsVectorArray<f64>());
+		VectorArrayUser(dyn.AsVectorArray<s8>());
+		VectorArrayUser(dyn.AsVectorArray<u8>());
+		VectorArrayUser(dyn.AsVectorArray<s16>());
+		VectorArrayUser(dyn.AsVectorArray<u16>());
+		VectorArrayUser(dyn.AsVectorArray<s32>());
+		VectorArrayUser(dyn.AsVectorArray<u32>());
+		VectorArrayUser(dyn.AsVectorArray<s64>());
+		VectorArrayUser(dyn.AsVectorArray<u64>());
+		VectorArrayUser(dyn.AsVectorArray<f32>());
+		VectorArrayUser(dyn.AsVectorArray<f64>());
 	}
 	{
-		VectorArrayUser(dyn.template AsVectorArray<s8>(1));
-		VectorArrayUser(dyn.template AsVectorArray<u8>(1));
-		VectorArrayUser(dyn.template AsVectorArray<s16>(1));
-		VectorArrayUser(dyn.template AsVectorArray<u16>(1));
-		VectorArrayUser(dyn.template AsVectorArray<s32>(1));
-		VectorArrayUser(dyn.template AsVectorArray<u32>(1));
-		VectorArrayUser(dyn.template AsVectorArray<s64>(1));
-		VectorArrayUser(dyn.template AsVectorArray<u64>(1));
-		VectorArrayUser(dyn.template AsVectorArray<f32>(1));
-		VectorArrayUser(dyn.template AsVectorArray<f64>(1));
+		VectorArrayUser(dyn.AsVectorArray<s8>(1));
+		VectorArrayUser(dyn.AsVectorArray<u8>(1));
+		VectorArrayUser(dyn.AsVectorArray<s16>(1));
+		VectorArrayUser(dyn.AsVectorArray<u16>(1));
+		VectorArrayUser(dyn.AsVectorArray<s32>(1));
+		VectorArrayUser(dyn.AsVectorArray<u32>(1));
+		VectorArrayUser(dyn.AsVectorArray<s64>(1));
+		VectorArrayUser(dyn.AsVectorArray<u64>(1));
+		VectorArrayUser(dyn.AsVectorArray<f32>(1));
+		VectorArrayUser(dyn.AsVectorArray<f64>(1));
 	}
 	{
 		dyn.TryGetStringMap();
@@ -182,70 +182,65 @@ template <class Config> void TestReader()
 		dyn.TryGetByteArray();
 	}
 	{
-		dyn.template TryGetVector<s8>();
-		dyn.template TryGetVector<u8>();
-		dyn.template TryGetVector<s16>();
-		dyn.template TryGetVector<u16>();
-		dyn.template TryGetVector<s32>();
-		dyn.template TryGetVector<u32>();
-		dyn.template TryGetVector<s64>();
-		dyn.template TryGetVector<u64>();
-		dyn.template TryGetVector<f32>();
-		dyn.template TryGetVector<f64>();
+		dyn.TryGetVector<s8>();
+		dyn.TryGetVector<u8>();
+		dyn.TryGetVector<s16>();
+		dyn.TryGetVector<u16>();
+		dyn.TryGetVector<s32>();
+		dyn.TryGetVector<u32>();
+		dyn.TryGetVector<s64>();
+		dyn.TryGetVector<u64>();
+		dyn.TryGetVector<f32>();
+		dyn.TryGetVector<f64>();
 	}
 	{
-		dyn.template TryGetVector<s8>(1);
-		dyn.template TryGetVector<u8>(1);
-		dyn.template TryGetVector<s16>(1);
-		dyn.template TryGetVector<u16>(1);
-		dyn.template TryGetVector<s32>(1);
-		dyn.template TryGetVector<u32>(1);
-		dyn.template TryGetVector<s64>(1);
-		dyn.template TryGetVector<u64>(1);
-		dyn.template TryGetVector<f32>(1);
-		dyn.template TryGetVector<f64>(1);
+		dyn.TryGetVector<s8>(1);
+		dyn.TryGetVector<u8>(1);
+		dyn.TryGetVector<s16>(1);
+		dyn.TryGetVector<u16>(1);
+		dyn.TryGetVector<s32>(1);
+		dyn.TryGetVector<u32>(1);
+		dyn.TryGetVector<s64>(1);
+		dyn.TryGetVector<u64>(1);
+		dyn.TryGetVector<f32>(1);
+		dyn.TryGetVector<f64>(1);
 	}
 	{
-		dyn.template TryGetVectorArray<s8>();
-		dyn.template TryGetVectorArray<u8>();
-		dyn.template TryGetVectorArray<s16>();
-		dyn.template TryGetVectorArray<u16>();
-		dyn.template TryGetVectorArray<s32>();
-		dyn.template TryGetVectorArray<u32>();
-		dyn.template TryGetVectorArray<s64>();
-		dyn.template TryGetVectorArray<u64>();
-		dyn.template TryGetVectorArray<f32>();
-		dyn.template TryGetVectorArray<f64>();
+		dyn.TryGetVectorArray<s8>();
+		dyn.TryGetVectorArray<u8>();
+		dyn.TryGetVectorArray<s16>();
+		dyn.TryGetVectorArray<u16>();
+		dyn.TryGetVectorArray<s32>();
+		dyn.TryGetVectorArray<u32>();
+		dyn.TryGetVectorArray<s64>();
+		dyn.TryGetVectorArray<u64>();
+		dyn.TryGetVectorArray<f32>();
+		dyn.TryGetVectorArray<f64>();
 	}
 	{
-		dyn.template TryGetVectorArray<s8>(1);
-		dyn.template TryGetVectorArray<u8>(1);
-		dyn.template TryGetVectorArray<s16>(1);
-		dyn.template TryGetVectorArray<u16>(1);
-		dyn.template TryGetVectorArray<s32>(1);
-		dyn.template TryGetVectorArray<u32>(1);
-		dyn.template TryGetVectorArray<s64>(1);
-		dyn.template TryGetVectorArray<u64>(1);
-		dyn.template TryGetVectorArray<f32>(1);
-		dyn.template TryGetVectorArray<f64>(1);
+		dyn.TryGetVectorArray<s8>(1);
+		dyn.TryGetVectorArray<u8>(1);
+		dyn.TryGetVectorArray<s16>(1);
+		dyn.TryGetVectorArray<u16>(1);
+		dyn.TryGetVectorArray<s32>(1);
+		dyn.TryGetVectorArray<u32>(1);
+		dyn.TryGetVectorArray<s64>(1);
+		dyn.TryGetVectorArray<u64>(1);
+		dyn.TryGetVectorArray<f32>(1);
+		dyn.TryGetVectorArray<f64>(1);
 	}
 	{
-		dyn.template CastToNumber<s32>();
-		dyn.template CastToNumber<u32>();
-		dyn.template CastToNumber<f32>();
-		dyn.template CastToNumber<s64>();
-		dyn.template CastToNumber<u64>();
-		dyn.template CastToNumber<f64>();
+		dyn.CastToNumber<s32>();
+		dyn.CastToNumber<u32>();
+		dyn.CastToNumber<f32>();
+		dyn.CastToNumber<s64>();
+		dyn.CastToNumber<u64>();
+		dyn.CastToNumber<f64>();
 		dyn.CastToBool();
 	}
 }
 
 int main()
 {
-	TestReader<ReaderConfig0>();
-	TestReader<ReaderConfig1>();
-	TestReader<ReaderConfig2>();
-	TestReader<ReaderConfig3>();
-	TestReader<ReaderConfig4>();
-	TestReader<ReaderAdaptiveConfig>();
+	TestReader();
 }

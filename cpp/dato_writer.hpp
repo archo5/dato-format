@@ -13,18 +13,7 @@
 #endif
 
 #ifdef DATO_USE_STD_SORT // increases compile time, only valuable as a reference/workaround
-#include <algorithm>
-#endif
-
-
-#ifdef _MSC_VER
-#  define DATO_FORCEINLINE __forceinline
-extern "C" void __ud2(void);
-#  pragma intrinsic(__ud2)
-#  define DATO_CRASH _dato_error()
-#else
-#  define DATO_FORCEINLINE inline __attribute__((always_inline))
-#  define DATO_CRASH __builtin_trap()
+#  include <algorithm>
 #endif
 
 // validation - triggers a code breakpoint when hitting the failure condition
@@ -43,6 +32,24 @@ extern "C" void __ud2(void);
 #else
 #  define DATO_INPUT_EXPECT(x)
 #endif
+
+#ifndef DATO_CONFIG
+#  define DATO_CONFIG 0
+#endif
+
+
+#ifdef _MSC_VER
+#  define DATO_FORCEINLINE __forceinline
+extern "C" void __ud2(void);
+#  pragma intrinsic(__ud2)
+#  define DATO_CRASH _dato_error()
+#else
+#  define DATO_FORCEINLINE inline __attribute__((always_inline))
+#  define DATO_CRASH __builtin_trap()
+#endif
+
+#define _DATO_CONCAT(a, b) a ## b
+#define DATO_CONCAT(a, b) _DATO_CONCAT(a, b)
 
 
 namespace dato {
@@ -170,6 +177,7 @@ struct Builder
 	char* _data = nullptr;
 	u32 _size = 0;
 	u32 _mem = 0;
+	bool error = false;
 
 	~Builder()
 	{
@@ -226,7 +234,7 @@ struct Builder
 		_size += size;
 	}
 
-	void SetError_ValueOutOfRange() { /* TODO */ }
+	void SetError_ValueOutOfRange() { error = true; }
 };
 
 inline u32 WriteSizeU8(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
@@ -234,7 +242,7 @@ inline u32 WriteSizeU8(Builder& B, u32 val, u32 align, const void* prefix, u32 p
 	if (val > 0xff)
 	{
 		B.SetError_ValueOutOfRange();
-		return u32(-1);
+		val = 0;
 	}
 	u32 pos = B.GetSize();
 	if (align != 0)
@@ -254,7 +262,7 @@ inline u32 WriteSizeU16(Builder& B, u32 val, u32 align, const void* prefix, u32 
 	if (val > 0xffff)
 	{
 		B.SetError_ValueOutOfRange();
-		return u32(-1);
+		val = 0;
 	}
 	u32 pos = B.GetSize();
 	if (align != 0)
@@ -354,37 +362,9 @@ struct WriterConfig2
 	static u8 Identifier() { return 2; }
 
 	static u32 WriteKeyLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
-	static u32 WriteMapSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
-	static u32 WriteArrayLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
-	static u32 WriteValueLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
-};
-
-struct WriterConfig3
-{
-	static u8 Identifier() { return 3; }
-
-	static u32 WriteKeyLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU8(B, val, align, prefix, pfxsize); }
-	static u32 WriteMapSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU8(B, val, align, prefix, pfxsize); }
-	static u32 WriteArrayLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
-	static u32 WriteValueLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU32(B, val, align, prefix, pfxsize); }
-};
-
-struct WriterConfig4
-{
-	static u8 Identifier() { return 4; }
-
-	static u32 WriteKeyLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU8(B, val, align, prefix, pfxsize); }
 	static u32 WriteMapSize(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
-	{ return WriteSizeU8(B, val, align, prefix, pfxsize); }
+	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
 	static u32 WriteArrayLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
 	{ return WriteSizeU8X32(B, val, align, prefix, pfxsize); }
 	static u32 WriteValueLength(Builder& B, u32 val, u32 align, const void* prefix, u32 pfxsize)
@@ -823,14 +803,14 @@ inline void SortEntriesByKeyString(const char* mem, StringMapEntry* entries, u32
 }
 #endif // DATO_USE_STD_SORT
 
-template <class Config>
-struct Writer : WriterBase
+struct DATO_CONCAT(Writer, DATO_CONFIG) : WriterBase
 {
+	using Config = DATO_CONCAT(WriterConfig, DATO_CONFIG);
 	TempMem _sortableEntries;
 	TempMem _sortCopyEntries;
 	bool _skipDuplicateKeys;
 
-	DATO_FORCEINLINE Writer
+	DATO_FORCEINLINE DATO_CONCAT(Writer, DATO_CONFIG)
 	(
 		const char* prefix = "DATO",
 		u32 pfxsize = 4,
@@ -1057,5 +1037,6 @@ struct Writer : WriterBase
 		return WriteVectorArrayRaw(values, SubtypeInfo<T>::Subtype, sizeof(T), elemCount, length);
 	}
 };
+using Writer = DATO_CONCAT(Writer, DATO_CONFIG);
 
 } // dato

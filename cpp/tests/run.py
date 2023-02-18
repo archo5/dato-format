@@ -122,13 +122,13 @@ def run_benchinternals():
 def run_benchfiles():
 	validate = len(sys.argv) < 3 or sys.argv[2] == "check"
 	validate_defs = "" if validate else "-DDATO_VALIDATE_BUFFERS=0 -DDATO_VALIDATE_INPUTS=0"
-	for i in range(0, 5):
+	for i in range(0, 3):
 		print("config =", i)
 		RUN(
 			"clang++ -o benchfiles.exe -Wall -g -O2 -fno-exceptions -fno-rtti"
 			#" -falign-functions=16 -falign-loops=16 -falign-jumps=16 -falign-labels=16"
 			" -mllvm -align-all-functions=4 -mllvm -align-all-nofallthru-blocks=4"
-			" benchfiles.cpp benchutil.cpp -DCONFIG=%d %s"
+			" benchfiles.cpp benchutil.cpp -DDATO_CONFIG=%d %s"
 			" -lkernel32 && benchfiles gen-nodes" % (i, validate_defs)
 		)
 

@@ -163,7 +163,7 @@ struct IValueDumperIterator : IValueIterator
 	{
 		for (u32 i = 0; i < length; i++)
 		{
-			T v = data[i];
+			T v = ReadT<T>(&data[i]);
 			if (v == '\\')
 			{
 				PrintText("\\\\", 2);
