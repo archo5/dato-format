@@ -1,6 +1,8 @@
 # DATO: Directly Accessing a Tree of Objects
 An immediately traversable binary file format for encoding extensible data
 
+License: public domain or MIT (see LICENSE for details).
+
 ## Why this format?
 
 Most file formats exist in one of two categories:
@@ -71,7 +73,7 @@ Additional options:
 	- This doesn't seem to affect the compressibility of files however (compressed sizes will be roughly the same).
 - Key sorting can be disabled to improve serialization speed at the cost of lookup speed.
 
-## The file format specification (**warning: not finalized at this point - minor details may change**)
+## The file format specification
 
 ```py
 # It is encouraged to "bend" the format for your needs, however the following properties are normally expected:
